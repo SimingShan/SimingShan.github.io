@@ -1,0 +1,477 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Teaching a diffusion model to invert the wave equation — Siming Shan</title>
+<meta name="description" content="A walkthrough of RED-DiffEq: how a denoising diffusion prior, trained once, can regularize seismic full-waveform inversion across very different geological domains." />
+
+<meta property="og:type" content="article" />
+<meta property="og:title" content="Teaching a diffusion model to invert the wave equation" />
+<meta property="og:description" content="A walkthrough of RED-DiffEq — a pretrained diffusion prior that regularizes full-waveform inversion across geological domains it was never trained on." />
+<meta property="og:image" content="../assets/featured.jpg" />
+
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='6' fill='%236a1b1a'/><text x='16' y='23' font-family='Georgia,serif' font-size='21' fill='%23fbfaf7' text-anchor='middle'>S</text></svg>" />
+
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600;1,6..72,400;1,6..72,500&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet" />
+
+<link rel="stylesheet" href="../styles.css" />
+<link rel="stylesheet" href="post.css" />
+
+<!-- KaTeX for math -->
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css" integrity="sha384-nB0miv6/jRmo5UMMR1wu3Gz6NLsoTkbqJghGIsx//Rlm+ZU03BU6SQNC66uf4l5+" crossorigin="anonymous">
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js" integrity="sha384-7zkQWkzuo3B5mTepMUcHkMB5jZaolc2xDwL6VFqjFALcbeS9Ggm/Yr2r3Dy4lfFg" crossorigin="anonymous"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js" integrity="sha384-43gviWU0YVjaDtb/GhzOouOXtZMP/7XUzwPTstBeZFe/+rCMvRwr4yROQP43s0Xk" crossorigin="anonymous"
+  onload="renderMathInElement(document.body, {delimiters:[{left:'$$',right:'$$',display:true},{left:'$',right:'$',display:false}], throwOnError:false});"></script>
+</head>
+<body class="post-body">
+
+<!-- Topbar -->
+<header class="topbar">
+  <div class="topbar-inner">
+    <div>
+      <a href="../index.html" class="brand">Siming Shan</a>
+      <span class="crumb">·</span>
+      <span style="color:var(--ink-faint)">Notebook</span>
+    </div>
+    <nav>
+      <a href="../index.html#publications">Publications</a>
+      <a href="../index.html#blog">All posts</a>
+      <a href="https://github.com/lu-group/red-diffeq" target="_blank" rel="noopener">Code ↗</a>
+    </nav>
+  </div>
+</header>
+
+<!-- Hero -->
+<section class="hero">
+  <p class="eyebrow"><span class="pill">Paper explainer</span> 14 min read · May 2026</p>
+  <h1>Teaching a diffusion model to <em>invert</em> the wave equation.</h1>
+  <p class="dek">
+    A learned denoising prior, trained once on one geological family, can regularize full-waveform
+    inversion across very different subsurfaces — without ever doing posterior sampling.
+    A walkthrough of <em>RED-DiffEq</em>.
+  </p>
+  <div class="byline">
+    <div><span class="field-label">Authors</span><span class="field-value">Siming Shan, Min Zhu, Youzuo Lin, Lu Lu</span></div>
+    <div><span class="field-label">Affiliation</span><span class="field-value">Yale SDS · Lu Group</span></div>
+    <div><span class="field-label">Paper</span><span class="field-value"><a href="https://arxiv.org/abs/2509.21659" target="_blank" rel="noopener">arXiv:2509.21659</a></span></div>
+    <div><span class="field-label">Code</span><span class="field-value"><a href="https://github.com/lu-group/red-diffeq" target="_blank" rel="noopener">lu-group/red-diffeq</a></span></div>
+  </div>
+</section>
+
+<!-- Hero figure -->
+<div class="hero-figure">
+  <img src="../assets/featured.jpg" alt="A diffusion model lifting the sheet of seismic data to reveal the subsurface velocity model beneath" width="1200" height="675" />
+  <p class="hero-figure-cap">The forward problem turns a velocity model into seismic recordings. RED-DiffEq turns the recordings back into a velocity model — with a diffusion prior holding the pen.</p>
+</div>
+
+<!-- Article -->
+<article class="article">
+
+  <!-- TL;DR -->
+  <div class="tldr">
+    <div class="label">TL;DR</div>
+    <p>
+      Full-waveform inversion (FWI) is a notoriously ill-posed inverse problem. We replace its
+      hand-crafted regularizer with the gradient of a pretrained diffusion model — a&nbsp;trick
+      borrowed from the <em>Regularization-by-Denoising</em> (RED) literature. The resulting
+      method is plug-and-play, generalizes across geological datasets it was never trained on,
+      and beats TV / Tikhonov baselines on SSIM, MAE and RMSE.
+    </p>
+  </div>
+
+  <p><span class="dropcap">S</span>eismic imaging asks a question that sounds simple and is not:
+  <em>given a few seconds of pressure recorded on the surface of the Earth, what does the
+  subsurface look like?</em> The forward problem — propagating an acoustic wave through a known
+  velocity field — is governed by a linear PDE we understand well. The inverse problem is where
+  things get interesting.</p>
+
+  <p>Full-waveform inversion (FWI) is the workhorse method: pose the question as an
+  optimization, minimize the mismatch between observed and simulated seismograms, and let
+  gradient descent find a velocity field that explains the data. In practice the loss surface
+  is non-convex, the data is band-limited, noise is everywhere, and there are infinitely many
+  velocity models that fit the data almost equally well. Without a strong prior on
+  <em>what an Earth model is supposed to look like</em>, FWI happily lands in geologically
+  implausible minima.</p>
+
+  <div class="margin-note">
+    The classic <em>cycle-skipping</em> failure mode of FWI happens when the initial model is
+    off by more than half a wavelength — the optimizer matches the wrong phase and never
+    recovers.
+  </div>
+
+  <!-- =================================================== -->
+  <h2><span class="num">01</span>The setup</h2>
+
+  <p>Let $m \in \mathbb{R}^{H \times W}$ be a 2D velocity model of the subsurface, and
+  $d_{\text{obs}}$ the observed seismic recording. The forward operator
+  $\mathcal{F}$ solves the acoustic wave equation,</p>
+
+  <div class="eq-block">
+    $$\left(\frac{1}{m(x)^2}\partial_t^2 - \nabla^2\right) u(x, t) = s(x, t),$$
+    <span class="eq-tag">(1)</span>
+  </div>
+
+  <p>and samples the wavefield $u$ at receiver locations to produce a simulated shot record.
+  A handful of sources are fired across the surface; each one produces a shot gather — the
+  raw material FWI has to work with.</p>
+
+  <figure class="figure wide">
+    <img src="../assets/fig/problem-setup.png" alt="A velocity model and the seismic shot gathers it produces, shown clean, noisy and with missing traces" width="1300" height="1271" loading="lazy" />
+    <figcaption>
+      <span class="num">Fig 1</span>
+      <span>
+        <strong>The forward problem.</strong> A velocity model <em>(a)</em> and the five shot
+        gathers it produces <em>(b)</em>, shown clean, with additive noise, and with missing
+        traces — the three measurement regimes we stress-test. FWI is the job of running this
+        map backwards.
+      </span>
+    </figcaption>
+  </figure>
+
+  <p>FWI then minimizes the data misfit</p>
+
+  <div class="eq-block">
+    $$\mathcal{L}_{\text{FWI}}(m) \;=\; \tfrac{1}{2}\,\|\mathcal{F}(m) - d_{\text{obs}}\|_2^2.$$
+    <span class="eq-tag">(2)</span>
+  </div>
+
+  <p>If equation (2) were the whole story, life would be easy and seismologists would be bored.
+  Two facts make it hard:</p>
+
+  <ul>
+    <li><strong>Non-uniqueness.</strong> Many wildly different $m$ produce nearly identical
+      $\mathcal{F}(m)$.</li>
+    <li><strong>Non-convexity.</strong> $\mathcal{L}_{\text{FWI}}$ has many local minima; the
+      optimizer can settle in one that fits the data but looks nothing like rock.</li>
+  </ul>
+
+  <p>The standard fix is to add a regularizer $R(m)$ that penalizes models we believe are
+  unphysical:</p>
+
+  <div class="eq-block">
+    $$\hat m \;=\; \arg\min_m \;\; \mathcal{L}_{\text{FWI}}(m) \;+\; \lambda\, R(m).$$
+    <span class="eq-tag">(3)</span>
+  </div>
+
+  <p>Tikhonov sets $R(m) = \|\nabla m\|_2^2$ (smoothness). Total variation sets
+  $R(m) = \|\nabla m\|_1$ (piecewise-constant blocks with sharp edges). Both encode a single,
+  hand-picked belief about the world. Real geology — folded layers, faults, salt bodies — is
+  more nuanced than either.</p>
+
+  <!-- =================================================== -->
+  <h2><span class="num">02</span>What if the regularizer were a neural network?</h2>
+
+  <p>The Regularization-by-Denoising (RED) framework, due to Romano, Elad and Milanfar,
+  observes something striking: if you have a good <em>denoiser</em> $D_\sigma$ — a function that
+  maps noisy images to clean ones — you can plug it into an inverse problem as if it were the
+  gradient of a regularizer. Specifically, RED uses the update</p>
+
+  <div class="eq-block">
+    $$\nabla R_{\text{RED}}(m) \;\approx\; m - D_\sigma(m),$$
+    <span class="eq-tag">(4)</span>
+  </div>
+
+  <p>which has the lovely interpretation: <em>at each step, nudge the current estimate toward
+  what the denoiser thinks it should look like</em>. The denoiser carries the prior; we don't
+  have to write it down by hand.</p>
+
+  <p>What's the best denoiser we have? A score-based diffusion model. Specifically, the score
+  function $\nabla_x \log p_t(x)$ learned during diffusion training is, up to a scaling,
+  exactly a denoiser — Tweedie's formula:</p>
+
+  <div class="eq-block">
+    $$\mathbb{E}[m_0 \mid m_t] \;=\; \frac{m_t + \sigma_t^2\, \nabla_{m_t} \log p_t(m_t)}{1}.$$
+    <span class="eq-tag">(5)</span>
+  </div>
+
+  <p>So a diffusion model trained on a corpus of synthetic velocity models gives us $D_\sigma$
+  <em>for free</em> at every noise level $\sigma$. We train a U-Net to predict the noise added
+  at each diffusion step; running it forward corrupts a velocity model into static, and the
+  learned reverse process turns static back into geology.</p>
+
+  <figure class="figure wide">
+    <img src="../assets/fig/diffusion.png" alt="The diffusion model: U-Net architecture, forward and reverse processes, and generated velocity-model samples" width="1600" height="1412" loading="lazy" />
+    <figcaption>
+      <span class="num">Fig 2</span>
+      <span>
+        <strong>The diffusion model.</strong> <em>(a)</em> A U-Net predicts the noise injected
+        at diffusion step $t$. <em>(b)</em> The forward process corrupts a velocity model into
+        Gaussian noise; the reverse process learns to undo it. <em>(c)</em> Samples drawn from
+        the trained model (bottom) versus real training samples (top), across four geology
+        families. This network — and only this — supplies the prior.
+      </span>
+    </figcaption>
+  </figure>
+
+  <p>So a diffusion model trained on, say, a corpus of synthetic velocity models from OpenFWI
+  gives us $D_\sigma$ at every noise level. RED-DiffEq plugs that into FWI.</p>
+
+  <p class="pull">
+    The diffusion model never sees seismic data. It only learns what subsurfaces look like —
+    and that turns out to be enough.
+  </p>
+
+  <!-- Interactive widget 1: denoising intuition -->
+  <section class="widget" id="denoise-widget" aria-label="Interactive: denoiser as prior">
+    <header>
+      <h4>Interactive · The denoiser as prior</h4>
+      <span class="tag">Schematic</span>
+    </header>
+
+    <div class="canvas-row">
+      <div class="panel"><canvas id="dw-clean" width="96" height="96"></canvas><span class="panel-label">clean $m_0$</span></div>
+      <div class="panel"><canvas id="dw-noisy" width="96" height="96"></canvas><span class="panel-label">noisy $m_0 + \sigma\varepsilon$</span></div>
+      <div class="panel"><canvas id="dw-denoised" width="96" height="96"></canvas><span class="panel-label">$D_\sigma(m_t)$</span></div>
+    </div>
+
+    <div class="controls">
+      <label>Noise σ</label>
+      <input id="dw-sigma" type="range" min="0" max="1" step="0.01" value="0.45" />
+      <span class="value" id="dw-sigma-val">0.45</span>
+    </div>
+    <div class="controls">
+      <label>Geology seed</label>
+      <input id="dw-seed" type="range" min="0" max="20" step="1" value="3" />
+      <span class="value" id="dw-seed-val">#3</span>
+    </div>
+
+    <p style="font-family:var(--sans);font-size:12px;color:var(--ink-faint);margin:14px 0 0;line-height:1.55;">
+      The denoiser shown here is a Gaussian smoother — a stand-in for the diffusion model. The
+      key point: as $\sigma$ rises, the denoiser&rsquo;s output is what the prior <em>believes</em>
+      the clean image should look like. That belief is what RED injects into FWI.
+    </p>
+  </section>
+
+  <!-- =================================================== -->
+  <h2><span class="num">03</span>The RED-DiffEq update</h2>
+
+  <p>Put the pieces together. The RED-DiffEq objective is</p>
+
+  <div class="eq-block">
+    $$\min_m\;\; \tfrac{1}{2}\|\mathcal{F}(m) - d_{\text{obs}}\|_2^2 \;+\; \lambda\, R_{\text{diff}}(m),$$
+    <span class="eq-tag">(6)</span>
+  </div>
+
+  <p>with gradient</p>
+
+  <div class="eq-block">
+    $$\nabla_m \mathcal{L} \;=\; \underbrace{\mathcal{F}'(m)^\top \big(\mathcal{F}(m) - d_{\text{obs}}\big)}_{\text{adjoint-state PDE gradient}} \;+\; \lambda \big(m - D_\theta(m, \sigma_t)\big).$$
+    <span class="eq-tag">(7)</span>
+  </div>
+
+  <p>The first term is the standard FWI gradient — computed by an adjoint-state solve of the
+  wave equation. The second term is a single forward pass through the pretrained diffusion
+  network at a chosen noise level $\sigma_t$. No Langevin sampling, no posterior MCMC, no
+  retraining on seismograms. Just two terms in a gradient and a sensible step size.</p>
+
+  <div class="margin-note">
+    The choice of $\sigma_t$ matters. Too small and the prior is essentially the identity. Too
+    large and the denoiser hallucinates. We sweep $\sigma_t$ on a small validation grid.
+  </div>
+
+  <div class="algo">
+<span class="algo-title">Algorithm · RED-DiffEq inversion</span>
+<span class="kw">input</span>  initial velocity $m^{(0)}$, observed data $d_\text{obs}$
+       pretrained denoiser $D_\theta$, weights $\lambda$, $\sigma_t$
+<span class="kw">for</span> $k = 0, 1, \dots, K-1$:
+   $g_\text{data} \leftarrow \mathcal{F}'(m^{(k)})^\top\!\big(\mathcal{F}(m^{(k)}) - d_\text{obs}\big)$  <span class="cm">// adjoint PDE</span>
+   $g_\text{prior} \leftarrow m^{(k)} - D_\theta(m^{(k)}, \sigma_t)$                <span class="cm">// one NN pass</span>
+   $m^{(k+1)} \leftarrow m^{(k)} - \eta_k \big( g_\text{data} + \lambda\, g_\text{prior} \big)$
+<span class="kw">return</span> $m^{(K)}$
+  </div>
+
+  <figure class="figure wide">
+    <img src="../assets/fig/method.png" alt="RED-DiffEq method overview: iterative velocity update, single RED-DiffEq iteration, regularization by denoising, refinement, and domain decomposition" width="1700" height="1423" loading="lazy" />
+    <figcaption>
+      <span class="num">Fig 3</span>
+      <span>
+        <strong>RED-DiffEq overview.</strong> <em>(a)</em> FWI iteratively refines the velocity
+        model; <em>(b)</em> each iteration adds a physics (data-misfit) gradient to the RED
+        gradient; <em>(c)</em> the RED gradient is one pass through a pretrained denoising
+        diffusion network at noise level $\sigma_t$; <em>(d)</em> an optional diffusion-sampling
+        refinement stage; <em>(e)</em> domain decomposition extends the prior to large models.
+        The diffusion model is trained <em>once</em>, on velocity models alone.
+      </span>
+    </figcaption>
+  </figure>
+
+  <!-- =================================================== -->
+  <h2><span class="num">04</span>Does it work?</h2>
+
+  <p>We train the diffusion model on horizontally-layered velocity models from OpenFWI — the
+  simpler geology in the corpus. Then, without any fine-tuning, we deploy that same prior on
+  three test families:</p>
+
+  <ul>
+    <li><strong>OpenFWI</strong> (in-domain): curved layers, faults, salt bodies.</li>
+    <li><strong>Marmousi</strong> (out-of-domain): the canonical structurally-complex
+      benchmark.</li>
+    <li><strong>Overthrust</strong> (out-of-domain): folded thrust geology.</li>
+  </ul>
+
+  <p>Baselines: physics-driven FWI, FWI + Tikhonov, FWI + total variation, and two
+  diffusion-based competitors — DiffusionFWI and Diffusion-ILVR. Same initial model, same
+  optimizer, same number of iterations. We also push every method through three kinds of data
+  corruption: Gaussian noise, Laplacian noise, and missing traces.</p>
+
+  <figure class="figure wide">
+    <img src="../assets/fig/results.png" alt="Inversion results across clean data, vertical profiles, and robustness to Gaussian noise, Laplacian noise and missing traces" width="1800" height="2000" loading="lazy" />
+    <figcaption>
+      <span class="num">Fig 4</span>
+      <span>
+        <strong>Inversion results.</strong> <em>(a)</em> Reconstructions on clean seismic data
+        for four OpenFWI families. <em>(b)</em> RMSE / MAE / SSIM versus iteration, plus
+        final-score bars. <em>(c)</em> Vertical velocity profiles at the marked trace line.
+        <em>(d–f)</em> Robustness as Gaussian noise, Laplacian noise, and missing traces
+        increase. RED-DiffEq (red) holds its accuracy where the baselines degrade.
+      </span>
+    </figcaption>
+  </figure>
+
+  <p>The qualitative picture: FWI alone gets the broad strokes but smears the high-wavenumber
+  detail. Tikhonov over-smooths, blurring out faults. TV introduces blocky cartoon-like
+  reconstructions that look great on synthetics but unphysical on real geology. The diffusion
+  baselines do better but remain sensitive to noise. RED-DiffEq recovers the structural
+  geometry — folded layers, fault offsets — and, crucially, its error curves stay flat as the
+  data degrades: the prior keeps the inversion honest when the measurements are not.</p>
+
+  <!-- =================================================== -->
+  <h2><span class="num">05</span>Why does the cross-dataset transfer work?</h2>
+
+  <p>This is the most interesting finding. The diffusion model has only ever seen relatively
+  simple layered geology, yet the prior it provides is useful for folded thrust geology. The
+  two out-of-distribution benchmarks make the point sharply.</p>
+
+  <figure class="figure wide">
+    <img src="../assets/fig/marmousi.png" alt="Marmousi out-of-distribution inversion results and robustness curves" width="1500" height="1090" loading="lazy" />
+    <figcaption>
+      <span class="num">Fig 5</span>
+      <span>
+        <strong>Marmousi — out of distribution.</strong> The prior never saw geology this
+        complex, yet RED-DiffEq reconstructs the Marmousi model and stays accurate under
+        increasing initial-model error and Gaussian / Laplacian noise. Hand-crafted
+        regularizers fall away as the conditions get harder.
+      </span>
+    </figcaption>
+  </figure>
+
+  <figure class="figure wide">
+    <img src="../assets/fig/overthrust.png" alt="Overthrust out-of-distribution inversion results, robustness curves and vertical profiles" width="1500" height="1092" loading="lazy" />
+    <figcaption>
+      <span class="num">Fig 6</span>
+      <span>
+        <strong>Overthrust — out of distribution.</strong> Same prior, folded thrust geology.
+        The vertical-profile panels <em>(c)</em> show RED-DiffEq tracking the ground-truth
+        velocity-depth curve far more tightly than the baselines.
+      </span>
+    </figcaption>
+  </figure>
+
+  <p>Our hypothesis: the denoiser doesn&rsquo;t encode <em>specific</em> geological structures so
+  much as a <em>local statistical signature</em> of what subsurface velocity fields look like —
+  piecewise smooth with sharp velocity contrasts, anisotropic correlation lengths, particular
+  noise statistics. Those local statistics are remarkably consistent across geological
+  families even when the global structure changes dramatically. The RED gradient pushes
+  toward those statistics without ever committing to a specific topology.</p>
+
+  <p>Said another way: TV says <em>"the world is piecewise constant."</em> Tikhonov says
+  <em>"the world is smooth."</em> The diffusion prior says <em>"the world looks like
+  this"</em> — and "like this" turns out to be a much richer, structurally-correct claim, even
+  on data it wasn&rsquo;t trained on.</p>
+
+  <div class="margin-note">
+    A nice corollary: you don&rsquo;t need a giant cross-domain training set to build a useful
+    seismic prior. One clean synthetic dataset is enough.
+  </div>
+
+  <!-- =================================================== -->
+  <h2><span class="num">06</span>Does the prior know when it&rsquo;s wrong?</h2>
+
+  <p>A regularizer that improves accuracy is good; one that also tells you <em>where it is
+  uncertain</em> is better. Because RED-DiffEq is cheap to run, we can launch it from many
+  random initializations and treat the resulting spread as an ensemble.</p>
+
+  <figure class="figure wide">
+    <img src="../assets/fig/uq.png" alt="Ensemble uncertainty: ensemble mean, absolute error, ensemble standard deviation, error-vs-std correlation, and vertical profile with 95% confidence interval" width="1600" height="768" loading="lazy" />
+    <figcaption>
+      <span class="num">Fig 7</span>
+      <span>
+        <strong>Ensemble uncertainty.</strong> For each test family: ground truth, ensemble
+        mean, absolute error, and ensemble standard deviation, followed by a scatter of
+        ensemble std against absolute error (correlation $R$, $\rho$) and a mean
+        velocity-depth profile with a 95% confidence band. The ensemble&rsquo;s spread is
+        positively correlated with the true error, and the band brackets the ground truth.
+      </span>
+    </figcaption>
+  </figure>
+
+  <p>The ensemble standard deviation correlates with the actual reconstruction error: where
+  the method disagrees with itself, it is more likely to be wrong. That makes the spread a
+  usable, calibration-friendly confidence estimate — for free, from the same machinery — and
+  the 95% interval around the velocity-depth profile reliably contains the ground truth.</p>
+
+  <!-- =================================================== -->
+  <h2><span class="num">07</span>Limitations &amp; what&rsquo;s next</h2>
+
+  <p>The honest list:</p>
+
+  <ul>
+    <li><strong>2D, acoustic only.</strong> Real seismic is 3D and elastic. The math extends;
+      the compute does not.</li>
+    <li><strong>Noise level scheduling.</strong> Picking $\sigma_t$ remains a knob. A
+      principled annealing schedule would be nice.</li>
+    <li><strong>Field data.</strong> We benchmark on synthetic data with known ground truth.
+      Real recordings will stress the prior&rsquo;s tails harder.</li>
+  </ul>
+
+  <p>What I want to do next: replace the explicit RED gradient with a properly-derived
+  posterior-sampling scheme, port the framework to elastic FWI, and ask whether the same
+  trick — pretrained generative prior, no posterior sampling, plug into an existing
+  PDE-constrained pipeline — works for other inverse problems in scientific computing.
+  Optical tomography and electrical impedance tomography are obvious candidates.</p>
+
+  <!-- =================================================== -->
+  <h2><span class="num">08</span>Cite</h2>
+
+  <div class="cite-block" id="cite-red-diffeq">@article{shan2025red,
+  author  = {Shan, Siming and Zhu, Min and Lin, Youzuo and Lu, Lu},
+  title   = {{RED-DiffEq}: Regularization by denoising diffusion models
+             for solving inverse {PDE} problems with application
+             to full waveform inversion},
+  journal = {arXiv preprint arXiv:2509.21659},
+  year    = {2026}
+}</div>
+
+  <h2><span class="num">09</span>References</h2>
+  <ol class="refs">
+    <li>Shan, S., Zhu, M., Lin, Y., &amp; Lu, L. <em>RED-DiffEq: Regularization by denoising
+      diffusion models for solving inverse PDE problems with application to full waveform
+      inversion.</em> arXiv:2509.21659 (2026).</li>
+    <li>Romano, Y., Elad, M., &amp; Milanfar, P. <em>The little engine that could: Regularization
+      by denoising (RED).</em> SIAM Journal on Imaging Sciences, 10(4), 2017.</li>
+    <li>Ho, J., Jain, A., &amp; Abbeel, P. <em>Denoising diffusion probabilistic models.</em>
+      NeurIPS 2020.</li>
+    <li>Deng, C. et al. <em>OpenFWI: Large-scale multi-structural benchmark datasets for
+      full waveform inversion.</em> NeurIPS Datasets &amp; Benchmarks 2022.</li>
+    <li>Virieux, J. &amp; Operto, S. <em>An overview of full-waveform inversion in exploration
+      geophysics.</em> Geophysics 74, 2009.</li>
+  </ol>
+
+</article>
+
+<footer class="post-footer">
+  <span>© 2026 Siming Shan · <a href="../index.html">back to homepage</a></span>
+  <span>
+    <a href="https://github.com/lu-group/red-diffeq" target="_blank" rel="noopener">Code</a> ·
+    <a href="https://arxiv.org/abs/2509.21659" target="_blank" rel="noopener">arXiv</a>
+  </span>
+</footer>
+
+<!-- ====== Scripts ====== -->
+<script src="widgets.js"></script>
+
+</body>
+</html>
