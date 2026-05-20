@@ -15,7 +15,7 @@
 
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-<link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600;1,6..72,400;1,6..72,500&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<link href="https://fonts.googleapis.com/css2?family=Inter:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet" />
 
 <link rel="stylesheet" href="../styles.css" />
 <link rel="stylesheet" href="post.css" />
@@ -38,7 +38,7 @@
     </div>
     <nav>
       <a href="../index.html#blog">All posts</a>
-      <a href="https://arxiv.org/abs/2509.21659" target="_blank" rel="noopener">Paper ↗</a>
+      <a href="https://www.nature.com/articles/s42005-026-02677-6" target="_blank" rel="noopener">Paper ↗</a>
       <a href="https://github.com/lu-group/red-diffeq" target="_blank" rel="noopener">Code ↗</a>
     </nav>
   </div>
@@ -55,7 +55,7 @@
   </p>
   <div class="byline">
     <div><span class="field-label">Authors</span><span class="field-value">Siming Shan, Min Zhu, Youzuo Lin, Lu Lu</span></div>
-    <div><span class="field-label">Paper</span><span class="field-value"><a href="https://arxiv.org/abs/2509.21659" target="_blank" rel="noopener">arXiv:2509.21659</a></span></div>
+    <div><span class="field-label">Published in</span><span class="field-value"><a href="https://www.nature.com/articles/s42005-026-02677-6" target="_blank" rel="noopener">Communications Physics</a></span></div>
     <div><span class="field-label">Code</span><span class="field-value"><a href="https://github.com/lu-group/red-diffeq" target="_blank" rel="noopener">lu-group/red-diffeq</a></span></div>
   </div>
 </section>
@@ -163,6 +163,33 @@
     and that turns out to be enough.
   </p>
 
+  <section class="widget" id="denoise-widget" aria-label="Interactive: the denoiser as prior">
+    <header>
+      <h4>Interactive · The denoiser as prior</h4>
+      <span class="tag">Schematic</span>
+    </header>
+    <div class="canvas-row">
+      <div class="panel"><canvas id="dw-clean" width="96" height="96"></canvas><span class="panel-label">clean</span></div>
+      <div class="panel"><canvas id="dw-noisy" width="96" height="96"></canvas><span class="panel-label">noisy input</span></div>
+      <div class="panel"><canvas id="dw-denoised" width="96" height="96"></canvas><span class="panel-label">denoised</span></div>
+    </div>
+    <div class="controls">
+      <label>Noise σ</label>
+      <input id="dw-sigma" type="range" min="0" max="1" step="0.01" value="0.45" />
+      <span class="value" id="dw-sigma-val">0.45</span>
+    </div>
+    <div class="controls">
+      <label>Geology seed</label>
+      <input id="dw-seed" type="range" min="0" max="20" step="1" value="3" />
+      <span class="value" id="dw-seed-val">#3</span>
+    </div>
+    <p class="widget-note">
+      The denoiser here is a Gaussian smoother — a stand-in for the diffusion model. As σ rises,
+      its output is what the prior <em>believes</em> the clean image should look like. That
+      belief is exactly what RED injects into FWI. Drag the sliders.
+    </p>
+  </section>
+
   <h2><span class="num">03</span>The RED-DiffEq update</h2>
 
   <p>Put the pieces together. The RED-DiffEq objective is
@@ -195,18 +222,6 @@
 <span class="kw">return</span> $m^{(K)}$
   </div>
 
-  <figure class="figure">
-    <a href="../assets/figures/method.png" target="_blank" rel="noopener">
-      <img src="../assets/figures/method.png" alt="RED-DiffEq method overview: iterative velocity update, single iteration, regularization by denoising, refinement, and domain decomposition" width="1700" height="1423" loading="lazy" />
-    </a>
-    <figcaption>
-      <span class="num">Fig 1</span>
-      <strong>RED-DiffEq overview.</strong> Each FWI iteration adds a physics (data-misfit)
-      gradient to the RED gradient — one pass through a pretrained denoising diffusion network.
-      The diffusion model is trained once, on velocity models alone. <em>Click to enlarge.</em>
-    </figcaption>
-  </figure>
-
   <h2><span class="num">04</span>Does it work?</h2>
 
   <p>We train the diffusion model on horizontally-layered velocity models from OpenFWI — the
@@ -216,18 +231,19 @@
   FWI + Tikhonov, FWI + total variation, and two diffusion-based competitors. We also push
   every method through Gaussian noise, Laplacian noise, and missing traces.</p>
 
-  <figure class="figure">
-    <a href="../assets/figures/results.png" target="_blank" rel="noopener">
-      <img src="../assets/figures/results.png" alt="Inversion results on clean data, vertical profiles, and robustness to Gaussian noise, Laplacian noise and missing traces" width="1800" height="2000" loading="lazy" />
-    </a>
-    <figcaption>
-      <span class="num">Fig 2</span>
-      <strong>Inversion results.</strong> Reconstructions on clean data, RMSE / MAE / SSIM
-      versus iteration, vertical velocity profiles, and robustness as Gaussian noise, Laplacian
-      noise, and missing traces increase. RED-DiffEq (red) holds its accuracy where the
-      baselines degrade. <em>Click to enlarge.</em>
-    </figcaption>
-  </figure>
+  <section class="compare-strip" aria-label="Reconstruction comparison">
+    <div class="strip">
+      <div><canvas id="cs-gt"  width="96" height="96"></canvas><span class="caption">ground truth</span></div>
+      <div><canvas id="cs-fwi" width="96" height="96"></canvas><span class="caption">FWI</span></div>
+      <div><canvas id="cs-tv"  width="96" height="96"></canvas><span class="caption">FWI + TV</span></div>
+      <div><canvas id="cs-red" width="96" height="96"></canvas><span class="caption">RED-DiffEq</span></div>
+    </div>
+    <p class="strip-note">
+      Schematic reconstructions on a synthetic folded cross-section. FWI smears the fine
+      detail; TV introduces blocky artifacts; RED-DiffEq recovers the folded structure.
+      Illustrative — see the paper for quantitative SSIM / MAE / RMSE results.
+    </p>
+  </section>
 
   <p>The qualitative picture: FWI alone gets the broad strokes but smears the high-wavenumber
   detail. Tikhonov over-smooths, blurring out faults. TV gives blocky, cartoon-like
@@ -267,19 +283,20 @@
 
   <h2><span class="num">07</span>Cite</h2>
 
-  <div class="cite-block" id="cite-red-diffeq">@article{shan2025red,
+  <div class="cite-block" id="cite-red-diffeq">@article{shan2026red,
   author  = {Shan, Siming and Zhu, Min and Lin, Youzuo and Lu, Lu},
-  title   = {{RED-DiffEq}: Regularization by denoising diffusion models
-             for solving inverse {PDE} problems with application
-             to full waveform inversion},
-  journal = {arXiv preprint arXiv:2509.21659},
-  year    = {2026}
+  title   = {Regularization by denoising diffusion models for solving
+             inverse {PDE} problems with application to full
+             waveform inversion},
+  journal = {Communications Physics},
+  year    = {2026},
+  doi     = {10.1038/s42005-026-02677-6}
 }</div>
 
   <ol class="refs">
-    <li>Shan, S., Zhu, M., Lin, Y., &amp; Lu, L. <em>RED-DiffEq: Regularization by denoising
-      diffusion models for solving inverse PDE problems with application to full waveform
-      inversion.</em> arXiv:2509.21659 (2026).</li>
+    <li>Shan, S., Zhu, M., Lin, Y., &amp; Lu, L. <em>Regularization by denoising diffusion
+      models for solving inverse PDE problems with application to full waveform inversion.</em>
+      Communications Physics (2026). DOI:&nbsp;10.1038/s42005-026-02677-6.</li>
     <li>Romano, Y., Elad, M., &amp; Milanfar, P. <em>The little engine that could: Regularization
       by denoising (RED).</em> SIAM Journal on Imaging Sciences, 10(4), 2017.</li>
     <li>Ho, J., Jain, A., &amp; Abbeel, P. <em>Denoising diffusion probabilistic models.</em>
@@ -294,9 +311,11 @@
   <span>© 2026 Siming Shan · <a href="../index.html">back to homepage</a></span>
   <span>
     <a href="https://github.com/lu-group/red-diffeq" target="_blank" rel="noopener">Code</a> ·
-    <a href="https://arxiv.org/abs/2509.21659" target="_blank" rel="noopener">arXiv</a>
+    <a href="https://www.nature.com/articles/s42005-026-02677-6" target="_blank" rel="noopener">Communications Physics</a>
   </span>
 </footer>
+
+<script src="widgets.js"></script>
 
 </body>
 </html>

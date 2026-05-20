@@ -14,10 +14,10 @@ blog/
   red-diffeq.html       Paper explainer: RED-DiffEq
   shuimo.html           水墨 — the cat
   post.css              Shared blog-post styles
+  widgets.js            Interactive canvas widget (RED-DiffEq post)
 assets/
   portrait.jpg          Profile photo
   red-diffeq-cover.jpg  RED-DiffEq cover image
-  figures/              Paper figures (PNG)
   cat/                  Photos of 水墨
 ```
 
