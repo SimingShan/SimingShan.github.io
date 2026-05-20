@@ -8,20 +8,23 @@ Live site: <https://simingshan.github.io>
 ## Structure
 
 ```
-index.html            Homepage — about, publications, blog index
-styles.css            Global editorial styles
+index.html              Homepage — about, publications, blog index
+styles.css              Global styles
 blog/
-  red-diffeq.html     Paper explainer: RED-DiffEq
-  post.css            Blog-post styles
-  widgets.js          Interactive canvas widget
+  red-diffeq.html       Paper explainer: RED-DiffEq
+  shuimo.html           水墨 — the cat
+  post.css              Shared blog-post styles
 assets/
-  portrait.jpg        Profile photo
-  featured.jpg        Featured / hero image
-  fig/                Paper figures (PNG)
-Images/               Source artwork (PDF originals)
+  portrait.jpg          Profile photo
+  red-diffeq-cover.jpg  RED-DiffEq cover image
+  figures/              Paper figures (PNG)
+  cat/                  Photos of 水墨
 ```
 
-Static HTML/CSS/JS — no build step. Served via GitHub Pages.
+`source/` holds original artwork (PDF figures, full-resolution photos). It is
+git-ignored — kept locally, not published.
+
+Static HTML/CSS — no build step. Served via GitHub Pages.
 
 ## Local preview
 

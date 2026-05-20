@@ -1,3 +1,6 @@
 .DS_Store
 Thumbs.db
 *.log
+
+# Source artwork / originals — kept locally, not published
+source/
