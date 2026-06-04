@@ -44,120 +44,10 @@
     </ul>
 
     <div class="sidebar-pet" aria-label="Interactive Siamese — a stand-in for 水墨">
-      <svg class="pet-cat" viewBox="0 0 220 240" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Cartoon seal-point Siamese">
-        <defs>
-          <linearGradient id="petBody" x1="50%" y1="0%" x2="50%" y2="100%">
-            <stop offset="0%"  stop-color="#fbf2dc"/>
-            <stop offset="60%" stop-color="#f0e2c2"/>
-            <stop offset="100%" stop-color="#e2cfa2"/>
-          </linearGradient>
-          <radialGradient id="petMask" cx="50%" cy="35%" r="80%">
-            <stop offset="0%"  stop-color="#4a2c1c"/>
-            <stop offset="80%" stop-color="#321c10"/>
-          </radialGradient>
-          <radialGradient id="petEye" cx="50%" cy="25%" r="80%">
-            <stop offset="0%"  stop-color="#7fc4f0"/>
-            <stop offset="60%" stop-color="#3870c0"/>
-            <stop offset="100%" stop-color="#2a4892"/>
-          </radialGradient>
-          <radialGradient id="petEar" cx="50%" cy="40%" r="80%">
-            <stop offset="0%"  stop-color="#e0a8b0"/>
-            <stop offset="100%" stop-color="#b07880"/>
-          </radialGradient>
-        </defs>
-
-        <!-- ground shadow -->
-        <ellipse cx="110" cy="230" rx="80" ry="6" fill="#000" opacity=".1"/>
-
-        <!-- tail (behind body) -->
-        <g class="tail">
-          <path d="M 160 195 C 195 175 200 138 180 120 C 165 110 155 122 156 138"
-                stroke="#3a2418" stroke-width="14" stroke-linecap="round" fill="none"/>
-        </g>
-
-        <!-- body -->
-        <path d="M 78 226 C 50 200 56 168 80 152 C 94 144 126 144 140 152 C 164 168 170 200 142 226 Z"
-              fill="url(#petBody)"/>
-        <!-- chest highlight -->
-        <path d="M 95 165 Q 110 175 125 165 Q 122 195 110 210 Q 98 195 95 165 Z"
-              fill="#fff" opacity=".2"/>
-        <!-- front paws -->
-        <ellipse cx="92"  cy="226" rx="14" ry="6" fill="#3a2418"/>
-        <ellipse cx="128" cy="226" rx="14" ry="6" fill="#3a2418"/>
-
-        <!-- head (heart-shaped Siamese) -->
-        <path d="M 58 100 C 50 60 78 50 92 65 Q 110 78 110 78 Q 110 78 128 65 C 142 50 170 60 162 100 C 162 130 142 148 110 150 C 78 148 58 130 58 100 Z"
-              fill="url(#petBody)"/>
-
-        <!-- ears -->
-        <g class="ears">
-          <g class="ear ear-l">
-            <path d="M 62 78 L 50 22 L 95 58 Z" fill="#3a2418"/>
-            <path d="M 70 70 L 62 38 L 88 58 Z" fill="url(#petEar)"/>
-          </g>
-          <g class="ear ear-r">
-            <path d="M 158 78 L 170 22 L 125 58 Z" fill="#3a2418"/>
-            <path d="M 150 70 L 158 38 L 132 58 Z" fill="url(#petEar)"/>
-          </g>
-        </g>
-
-        <!-- face mask (seal point) -->
-        <path d="M 75 102 Q 110 82 145 102 Q 155 130 130 145 Q 110 152 90 145 Q 65 130 75 102 Z"
-              fill="url(#petMask)"/>
-
-        <!-- snout / chin (cream patch) -->
-        <path d="M 90 132 Q 110 158 130 132 Q 124 148 110 150 Q 96 148 90 132 Z"
-              fill="url(#petBody)"/>
-
-        <!-- subtle cheek blush -->
-        <ellipse cx="80"  cy="128" rx="5" ry="3" fill="#e8a8a8" opacity=".4"/>
-        <ellipse cx="140" cy="128" rx="5" ry="3" fill="#e8a8a8" opacity=".4"/>
-
-        <!-- left eye -->
-        <g class="eye eye-l">
-          <path d="M 82 100 Q 76 116 91 120 Q 104 117 104 108 Q 102 96 91 97 Z" fill="#fff"/>
-          <g class="iris iris-l">
-            <ellipse class="pupil" cx="93" cy="110" rx="7" ry="9" fill="url(#petEye)"/>
-            <ellipse cx="93" cy="111" rx="2.5" ry="6.5" fill="#1a2552"/>
-            <circle  class="glint" cx="96" cy="106" r="2.6" fill="#fff"/>
-            <circle  cx="90" cy="114" r="1" fill="#fff" opacity=".7"/>
-          </g>
-        </g>
-        <!-- right eye -->
-        <g class="eye eye-r">
-          <path d="M 138 100 Q 144 116 129 120 Q 116 117 116 108 Q 118 96 129 97 Z" fill="#fff"/>
-          <g class="iris iris-r">
-            <ellipse class="pupil" cx="127" cy="110" rx="7" ry="9" fill="url(#petEye)"/>
-            <ellipse cx="127" cy="111" rx="2.5" ry="6.5" fill="#1a2552"/>
-            <circle  class="glint" cx="130" cy="106" r="2.6" fill="#fff"/>
-            <circle  cx="124" cy="114" r="1" fill="#fff" opacity=".7"/>
-          </g>
-        </g>
-
-        <!-- heart-shaped nose -->
-        <path d="M 103 133 Q 106 130 110 134 Q 114 130 117 133 Q 117 140 110 145 Q 103 140 103 133 Z"
-              fill="#d49595"/>
-
-        <!-- mouth (Y) -->
-        <path d="M 110 145 L 110 148" stroke="#3a2418" stroke-width="1.6" stroke-linecap="round"/>
-        <path d="M 110 148 Q 104 153 99 150"  stroke="#3a2418" stroke-width="1.6" fill="none" stroke-linecap="round"/>
-        <path d="M 110 148 Q 116 153 121 150" stroke="#3a2418" stroke-width="1.6" fill="none" stroke-linecap="round"/>
-
-        <!-- whisker roots -->
-        <g fill="#3a2418" opacity=".55">
-          <circle cx="98"  cy="135" r=".7"/>
-          <circle cx="98"  cy="140" r=".7"/>
-          <circle cx="122" cy="135" r=".7"/>
-          <circle cx="122" cy="140" r=".7"/>
-        </g>
-        <!-- whiskers -->
-        <g stroke="#fff" stroke-width="1" stroke-linecap="round" opacity=".75" fill="none">
-          <path d="M 98 135 Q 78 130 58 128"/>
-          <path d="M 98 140 Q 78 144 60 148"/>
-          <path d="M 122 135 Q 142 130 162 128"/>
-          <path d="M 122 140 Q 142 144 160 148"/>
-        </g>
-      </svg>
+      <div class="pet-frame" role="img" aria-label="Illustrated Siamese cat">
+        <img class="pet-img pet-open"   src="assets/pet-open.png"   alt="Siamese cat with bright blue eyes" width="460" height="638" />
+        <img class="pet-img pet-closed" src="assets/pet-closed.png" alt="" aria-hidden="true"               width="460" height="628" />
+      </div>
       <p class="pet-cap">Pet me — she&rsquo;s shy.</p>
     </div>
   </aside>
@@ -332,52 +222,32 @@
 </div>
 
 <script>
-// Interactive Siamese — eye tracking, ear twitches, idle gaze, click bubbles
+// Interactive Siamese — random blinks (image swap) and click bubbles
 (() => {
-  const cat   = document.querySelector('.sidebar-pet .pet-cat');
+  const frame = document.querySelector('.sidebar-pet .pet-frame');
   const stage = document.querySelector('.sidebar-pet');
-  if (!cat || !stage) return;
-  const eyes = [
-    { g: cat.querySelector('.iris-l'), cx: 93,  cy: 110 },
-    { g: cat.querySelector('.iris-r'), cx: 127, cy: 110 },
-  ];
-  const earL = cat.querySelector('.ear-l');
-  const earR = cat.querySelector('.ear-r');
-  const VIEW_W = 220, VIEW_H = 240, MAX_R = 3.5;
+  if (!frame || !stage) return;
 
-  function look(svgX, svgY) {
-    for (const e of eyes) {
-      let dx = svgX - e.cx, dy = svgY - e.cy;
-      const d = Math.hypot(dx, dy);
-      if (d > MAX_R) { dx = dx * MAX_R / d; dy = dy * MAX_R / d; }
-      e.g.setAttribute('transform', `translate(${dx.toFixed(2)} ${dy.toFixed(2)})`);
-    }
+  function blink(dur = 180) {
+    frame.classList.add('blink');
+    setTimeout(() => frame.classList.remove('blink'), dur);
   }
-  function track(mx, my) {
-    const r = cat.getBoundingClientRect();
-    look((mx - r.left) * (VIEW_W / r.width), (my - r.top) * (VIEW_H / r.height));
-  }
+  (function scheduleBlink() {
+    const delay = 3500 + Math.random() * 3500;
+    setTimeout(() => {
+      blink(170);
+      if (Math.random() < 0.25) {           // occasional double blink
+        setTimeout(() => blink(150), 260);
+      }
+      scheduleBlink();
+    }, delay);
+  })();
 
-  let idle = setInterval(() => {
-    const a = Math.random() * Math.PI * 2, r = Math.random() * MAX_R;
-    look(110 + Math.cos(a) * r * 5, 110 + Math.sin(a) * r * 4);
-  }, 2600);
-
-  setInterval(() => {
-    if (Math.random() < 0.5) return;
-    const ear = Math.random() < 0.5 ? earL : earR;
-    ear.classList.add('twitch');
-    setTimeout(() => ear.classList.remove('twitch'), 450);
-  }, 6500);
-
-  window.addEventListener('mousemove', (e) => { clearInterval(idle); idle = null; track(e.clientX, e.clientY); });
-  window.addEventListener('touchmove', (e) => {
-    if (e.touches[0]) { clearInterval(idle); idle = null; track(e.touches[0].clientX, e.touches[0].clientY); }
-  }, { passive: true });
-
-  const phrases = ['meow', 'purr', '*tail flick*', '*slow blink*', 'mrrrp', '*head bonk*', 'prrrt', '*ear twitch*', 'hi'];
-  cat.addEventListener('click', (ev) => {
-    cat.classList.remove('happy'); void cat.offsetWidth; cat.classList.add('happy');
+  const phrases = ['meow', 'purr', '*tail flick*', '*slow blink*', 'mrrrp', '*head bonk*', 'prrrt', 'hi', '*kneads paws*'];
+  frame.addEventListener('click', (ev) => {
+    frame.classList.remove('happy'); void frame.offsetWidth; frame.classList.add('happy');
+    setTimeout(() => frame.classList.remove('happy'), 420);
+    blink(180);                              // slow-blink on tap
     const bubble = document.createElement('div');
     bubble.className = 'pet-bubble';
     bubble.textContent = phrases[Math.floor(Math.random() * phrases.length)];

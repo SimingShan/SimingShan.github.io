@@ -413,59 +413,47 @@ a:hover { color: var(--accent); text-decoration-color: var(--accent); }
   align-items: center;
   position: relative;
 }
-.sidebar-pet .pet-cat {
+.pet-frame {
+  position: relative;
   width: 200px;
-  height: auto;
-  display: block;
+  aspect-ratio: 460 / 638;
   cursor: pointer;
   user-select: none;
+  transition: filter .25s ease;
 }
+.pet-frame:hover {
+  filter: brightness(1.04) drop-shadow(0 4px 10px rgba(20, 17, 15, .12));
+}
+.pet-frame.happy { animation: pet-bounce .42s ease-out; }
+@keyframes pet-bounce {
+  0%   { transform: translateY(0) scale(1); }
+  40%  { transform: translateY(-8px) scale(1.04); }
+  100% { transform: translateY(0) scale(1); }
+}
+
+.pet-img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
+  transition: opacity .18s ease;
+  pointer-events: none;
+  -webkit-user-drag: none;
+}
+.pet-img.pet-closed { opacity: 0; }
+.pet-frame.blink .pet-img.pet-open   { opacity: 0; }
+.pet-frame.blink .pet-img.pet-closed { opacity: 1; }
+
 .sidebar-pet .pet-cap {
   font-family: var(--mono);
   font-size: 10.5px;
   letter-spacing: .12em;
   text-transform: uppercase;
   color: var(--ink-faint);
-  margin: 8px 0 0;
+  margin: 10px 0 0;
   text-align: center;
-}
-
-.pet-cat .tail {
-  transform-box: fill-box;
-  transform-origin: 160px 195px;
-  animation: pet-wag 3.2s ease-in-out infinite;
-}
-@keyframes pet-wag {
-  0%, 100% { transform: rotate(-4deg); }
-  50%      { transform: rotate(8deg); }
-}
-
-.pet-cat .eye { transform-box: fill-box; }
-.pet-cat .eye-l { transform-origin: 93px 110px;  animation: pet-blink 6s infinite; }
-.pet-cat .eye-r { transform-origin: 127px 110px; animation: pet-blink 6s infinite; }
-@keyframes pet-blink {
-  0%, 92%, 100% { transform: scaleY(1); }
-  95%           { transform: scaleY(0.05); }
-}
-
-.pet-cat .iris { transition: transform .15s ease-out; }
-
-.pet-cat .ear {
-  transform-box: fill-box;
-  transform-origin: 50% 100%;
-  transition: transform .25s ease-out;
-}
-.pet-cat .ear.twitch { animation: pet-twitch .42s ease-in-out; }
-@keyframes pet-twitch {
-  0%, 100% { transform: rotate(0); }
-  50%      { transform: rotate(-8deg); }
-}
-
-.pet-cat.happy { animation: pet-bounce .42s ease-out; }
-@keyframes pet-bounce {
-  0%   { transform: translateY(0); }
-  40%  { transform: translateY(-8px); }
-  100% { transform: translateY(0); }
 }
 
 .pet-bubble {
