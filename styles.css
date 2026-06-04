@@ -104,13 +104,13 @@ a:hover { color: var(--accent); text-decoration-color: var(--accent); }
 
 .role {
   font-family: var(--sans);
-  font-style: italic;
-  font-size: 17px;
-  line-height: 1.45;
+  font-size: 16px;
+  line-height: 1.5;
   color: var(--ink-soft);
   margin: 0;
 }
-.role .affil { color: var(--ink); font-style: normal; }
+.role .affil { color: var(--ink); font-weight: 500; }
+.role .advisor { color: var(--ink-soft); }
 
 .sidebar-links {
   list-style: none;

@@ -192,34 +192,51 @@
 
   <h2><span class="num">03</span>The RED-DiffEq update</h2>
 
-  <p>Put the pieces together. The RED-DiffEq objective is
-  $\min_m \tfrac{1}{2}\|\mathcal{F}(m) - d_{\text{obs}}\|_2^2 + \lambda\, R_{\text{diff}}(m)$,
-  with gradient</p>
+  <p>Putting the pieces together, the RED-DiffEq objective is
+  $\min_x \tfrac{1}{2}\|f_{\text{PDE}}(x) - u_{\text{obs}}\|_2^2 + \lambda\, R_{\text{diff}}(x)$.
+  The regularizer is the score-matching residual at a freshly-sampled noise level,</p>
 
   <div class="eq-block">
-    $$\nabla_m \mathcal{L} \;=\; \underbrace{\mathcal{F}'(m)^\top \big(\mathcal{F}(m) - d_{\text{obs}}\big)}_{\text{adjoint-state PDE gradient}} \;+\; \lambda \big(m - D_\theta(m, \sigma_t)\big).$$
+    $$R_{\text{diff}}(x) \;=\; x^\top \big(\mathrm{sg}(\varepsilon_\theta(x_t, t)) - \varepsilon\big),
+      \quad x_t = \sqrt{\gamma(t)}\, x + \sqrt{1-\gamma(t)}\, \varepsilon,$$
     <span class="eq-tag">(5)</span>
   </div>
 
+  <p>with $t \sim \mathcal{U}\{1,\dots,T\}$ and $\varepsilon \sim \mathcal{N}(0, \mathbf{I})$
+  drawn fresh at every iteration. The stop-gradient $\mathrm{sg}$ treats the network&rsquo;s
+  prediction as a constant w.r.t. $x$, so the regularization gradient collapses to the
+  noise-prediction residual $\varepsilon_\theta(x_t, t) - \varepsilon$. The full objective
+  gradient is therefore</p>
+
+  <div class="eq-block">
+    $$\nabla_x \mathcal{L} \;=\; \underbrace{f'_{\text{PDE}}(x)^\top \big(f_{\text{PDE}}(x) - u_{\text{obs}}\big)}_{\text{adjoint-state PDE gradient}} \;+\; \lambda \big(\varepsilon_\theta(x_t, t) - \varepsilon\big).$$
+    <span class="eq-tag">(6)</span>
+  </div>
+
   <p>The first term is the standard FWI gradient — an adjoint-state solve of the wave equation.
-  The second is a single forward pass through the pretrained diffusion network at noise level
-  $\sigma_t$. No Langevin sampling, no posterior MCMC, no retraining on seismograms. Just two
-  terms in a gradient and a sensible step size.</p>
+  The second is the noise-prediction error of the frozen diffusion network on a freshly-noised
+  copy of the current iterate: stochastic in $t$ and $\varepsilon$, deterministic in everything
+  else. No Langevin sampling, no posterior MCMC, no retraining on seismograms.</p>
 
   <aside class="note">
-    The noise level $\sigma_t$ is the one real knob: too small and the prior is the identity,
-    too large and the denoiser hallucinates. We sweep it on a small validation grid.
+    The noise schedule $\gamma(t)$ and the weight $\lambda$ are the main knobs. The pretrained
+    model uses $T = 1000$ training timesteps; at inference we sample $t$ uniformly at every
+    iteration and update $x$ with Adam.
   </aside>
 
   <div class="algo">
 <span class="algo-title">Algorithm · RED-DiffEq inversion</span>
-<span class="kw">input</span>  initial velocity $m^{(0)}$, observed data $d_\text{obs}$
-       pretrained denoiser $D_\theta$, weights $\lambda$, $\sigma_t$
+<span class="kw">input</span>  initial velocity $x_0$, seismic data $u_{\text{obs}}$
+       PDE solver $f_{\text{PDE}}$, frozen diffusion model $\varepsilon_\theta$
+       schedule $\{\gamma(t)\}_{t=1}^{T}$, weight $\lambda$, step size $\eta$, iters $K$
 <span class="kw">for</span> $k = 0, 1, \dots, K-1$:
-   $g_\text{data} \leftarrow \mathcal{F}'(m^{(k)})^\top\!\big(\mathcal{F}(m^{(k)}) - d_\text{obs}\big)$  <span class="cm">// adjoint PDE</span>
-   $g_\text{prior} \leftarrow m^{(k)} - D_\theta(m^{(k)}, \sigma_t)$                <span class="cm">// one NN pass</span>
-   $m^{(k+1)} \leftarrow m^{(k)} - \eta_k \big( g_\text{data} + \lambda\, g_\text{prior} \big)$
-<span class="kw">return</span> $m^{(K)}$
+   $t \sim \mathcal{U}\{1,\dots,T\}$                                          <span class="cm">// sample timestep</span>
+   $\varepsilon \sim \mathcal{N}(0, \mathbf{I})$                              <span class="cm">// sample noise</span>
+   $x_{k,t} \leftarrow \sqrt{\gamma(t)}\, x_k + \sqrt{1-\gamma(t)}\, \varepsilon$  <span class="cm">// noise the iterate</span>
+   $\hat\varepsilon \leftarrow \varepsilon_\theta(x_{k,t},\, t)$              <span class="cm">// frozen U-Net pass</span>
+   $\mathcal{L} \leftarrow \tfrac{1}{2}\|u_{\text{obs}} - f_{\text{PDE}}(x_k)\|^2 \;+\; \lambda\, x_k^\top\!\big(\mathrm{sg}(\hat\varepsilon) - \varepsilon\big)$
+   $x_{k+1} \leftarrow \mathrm{Adam}\big(x_k,\; \nabla_x \mathcal{L}\big)$
+<span class="kw">return</span> $x_K$
   </div>
 
   <h2><span class="num">04</span>Does it work?</h2>
@@ -316,6 +333,9 @@
 </footer>
 
 <script src="widgets.js"></script>
+
+<!-- visitor analytics — sign up free at https://goatcounter.com and replace the subdomain -->
+<script data-goatcounter="https://simingshan.goatcounter.com/count" async src="//gc.zgo.at/count.js"></script>
 
 </body>
 </html>

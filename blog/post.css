@@ -442,6 +442,73 @@ figure.figure figcaption .num {
   margin: 0;
 }
 
+/* ---------- Interactive pet (cat post) ---------- */
+.pet-stage {
+  position: relative;
+  display: grid;
+  place-items: center;
+  margin: 40px auto 8px;
+  padding: 18px;
+  background: var(--paper);
+  border: 1px solid var(--rule);
+}
+.pet-cat {
+  width: 260px;
+  height: auto;
+  display: block;
+  cursor: pointer;
+  user-select: none;
+}
+.pet-cat .tail {
+  transform-origin: 188px 200px;
+  animation: pet-tailwag 2.6s ease-in-out infinite;
+}
+@keyframes pet-tailwag {
+  0%, 100% { transform: rotate(-4deg); }
+  50%      { transform: rotate(10deg); }
+}
+.pet-cat .eye { transform-box: fill-box; transform-origin: center; animation: pet-blink 5.5s infinite; }
+.pet-cat .eye-l { transform-origin: 102px 118px; }
+.pet-cat .eye-r { transform-origin: 138px 118px; }
+@keyframes pet-blink {
+  0%, 92%, 100% { transform: scaleY(1); }
+  95%           { transform: scaleY(0.06); }
+}
+.pet-cat .pupil, .pet-cat .glint { transition: transform .14s ease-out; }
+.pet-cat.happy { animation: pet-bounce .42s ease-out; }
+@keyframes pet-bounce {
+  0%   { transform: translateY(0); }
+  40%  { transform: translateY(-7px); }
+  100% { transform: translateY(0); }
+}
+.pet-bubble {
+  position: absolute;
+  font-family: var(--sans);
+  font-size: 13px;
+  font-weight: 500;
+  background: var(--ink);
+  color: var(--bg);
+  padding: 4px 10px;
+  border-radius: 14px;
+  pointer-events: none;
+  transform: translate(-50%, -100%);
+  white-space: nowrap;
+  animation: pet-bubble-up 1.3s ease-out forwards;
+}
+@keyframes pet-bubble-up {
+  0%   { opacity: 0; transform: translate(-50%, -90%) scale(.6); }
+  20%  { opacity: 1; transform: translate(-50%, -120%) scale(1); }
+  100% { opacity: 0; transform: translate(-50%, -200%) scale(1); }
+}
+.pet-caption {
+  font-family: var(--sans);
+  font-size: 13px;
+  color: var(--ink-faint);
+  text-align: center;
+  margin: 14px auto 0;
+  max-width: 44ch;
+}
+
 /* ---------- Math ---------- */
 .eq-block {
   margin: 26px auto;
