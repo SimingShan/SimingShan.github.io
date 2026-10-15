@@ -9,11 +9,14 @@ Live site: <https://simingshan.github.io>
 
 ```
 index.html              Homepage — about, publications, blog index
-styles.css              Global styles
+home.css                Homepage styles (deep-space theme)
+home.js                 Hero: a sheet of equations lensed by a black hole
+styles.css              Base styles for blog posts
 blog/
   red-diffeq.html       Paper explainer: RED-DiffEq
   shuimo.html           水墨 — the cat
   post.css              Shared blog-post styles
+  night.css             Deep-space theme for blog posts
   widgets.js            Interactive canvas widget (RED-DiffEq post)
 assets/
   portrait.jpg          Profile photo
