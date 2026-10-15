@@ -22,20 +22,21 @@
 </head>
 <body>
 
+<!-- the sky, the sheet of equations, the bloom: behind everything -->
+<canvas class="spacetime" aria-hidden="true"></canvas>
+<!-- the horizon itself: in front of the page, so whatever falls in disappears -->
+<canvas class="horizon-layer" aria-hidden="true"></canvas>
+
 <nav class="topnav" aria-label="Sections">
   <a class="topnav-name" href="#top">Siming Shan</a>
   <div class="topnav-links">
     <a href="#about">About</a>
     <a href="#publications">Papers</a>
     <a href="#writing">Writing</a>
-    <a href="blog/shuimo.html">水墨</a>
   </div>
 </nav>
 
-<!-- ====================== Hero: a sheet of equations falling into a black hole ====================== -->
 <header class="hero" id="top">
-  <canvas class="spacetime" aria-hidden="true"></canvas>
-
   <div class="hero-inner">
     <p class="eyebrow">Yale University · Statistics &amp; Data Science · Lu Group</p>
     <h1 class="name">Siming <em>Shan</em></h1>
@@ -50,11 +51,6 @@
     </ul>
   </div>
 
-  <p class="hero-caption" aria-hidden="true">
-    <span>Fig. 0 — a sheet of equations, lensed by a Schwarzschild hole.</span>
-    <span>Swallowed this visit: <b class="eaten">0</b></span>
-  </p>
-
   <a class="scroll-cue" href="#about" aria-label="Scroll to About"><span></span></a>
 </header>
 
@@ -63,9 +59,10 @@
   <!-- About -->
   <section id="about" class="section about">
     <p class="sec-label"><span>01</span> About <i>r = 8 r<sub>s</sub></i></p>
+    <hr class="rule" />
     <div class="about-grid">
       <figure class="portrait">
-        <img src="assets/portrait.jpg" alt="Portrait of Siming Shan" width="858" height="1100" />
+        <img src="assets/portrait.jpg" alt="Portrait of Siming Shan" width="288" height="373" />
       </figure>
       <div class="about-text">
         <p class="lede">
@@ -80,12 +77,6 @@
           Prof. Lu Lu. My recent work pairs diffusion-based priors with PDE-constrained optimization
           for full-waveform inversion, but I&rsquo;m broadly interested in how generative models change
           the way we do <em>inference</em> in scientific computing.
-        </p>
-        <p>
-          Outside of research, my favourite distraction is my cat,
-          <a href="blog/shuimo.html">水墨</a>, a seal-point Siamese who lives back home in
-          China with my family. Yale is too far for a cat, so I settle for her photos
-          and my parents&rsquo; reports from the field.
         </p>
         <ul class="keywords" aria-label="Research keywords">
           <li>diffusion models</li>
@@ -102,11 +93,12 @@
   <!-- Publications -->
   <section id="publications" class="section">
     <p class="sec-label"><span>02</span> Publications <i>r = 4 r<sub>s</sub></i></p>
+    <hr class="rule" />
 
     <ol class="pubs">
       <li class="pub">
         <a class="pub-figure" href="blog/red-diffeq.html" aria-label="RED-DiffEq paper explainer">
-          <img src="assets/red-diffeq-cover.jpg" alt="RED-DiffEq: a diffusion prior revealing a subsurface velocity model" width="1200" height="675" loading="lazy" />
+          <img src="assets/red-diffeq-cover.jpg" alt="RED-DiffEq: a diffusion prior revealing a subsurface velocity model" width="1200" height="675" />
         </a>
         <div class="pub-body">
           <p class="pub-venue"><em>Communications Physics</em> · 2026</p>
@@ -172,6 +164,7 @@
   <!-- Writing -->
   <section id="writing" class="section">
     <p class="sec-label"><span>03</span> Writing <i>r = 2 r<sub>s</sub></i></p>
+    <hr class="rule" />
     <ul class="posts">
       <li class="post">
         <time datetime="2026-05">May 2026</time>
@@ -184,22 +177,12 @@
           </p>
         </div>
       </li>
-      <li class="post">
-        <time datetime="2026-05">May 2026</time>
-        <div>
-          <h3 class="post-title"><a href="blog/shuimo.html">My cat</a></h3>
-          <p class="post-dek">
-            A seal-point Siamese named 水墨, who lives back home in China, photographed
-            by my family and missed by me. 3&nbsp;min read.
-          </p>
-        </div>
-      </li>
     </ul>
   </section>
 
   <footer class="horizon">
-    <div class="horizon-ring" aria-hidden="true"></div>
     <p class="sec-label"><span>∞</span> Event horizon <i>r = r<sub>s</sub></i></p>
+    <hr class="rule" />
     <p class="horizon-note">Nothing escapes from here, except these links.</p>
     <p class="horizon-links">
       <a href="mailto:siming.shan@yale.edu">siming.shan@yale.edu</a>
