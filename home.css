@@ -45,13 +45,13 @@ a:focus-visible { outline: 1.5px solid var(--ice); outline-offset: 4px; border-r
 img { max-width: 100%; height: auto; display: block; }
 
 /* ---------------- The two fixed layers ---------------- */
-.spacetime, .horizon-layer {
+.spacetime, .lens, .horizon-layer {
   position: fixed; left: 0; top: 0;
   width: 100%; height: 100vh; height: 100lvh;
   display: block;
   pointer-events: none;
 }
-.spacetime { z-index: 0; }
+.spacetime, .lens { z-index: 0; }
 .horizon-layer { z-index: 5; }
 .hero, main { position: relative; z-index: 1; }
 
@@ -59,7 +59,6 @@ img { max-width: 100%; height: auto; display: block; }
 .w { display: inline-block; }
 .fall { transform-origin: 50% 50%; }
 .fall.hot { color: var(--ice-bright) !important; text-shadow: 0 0 10px rgba(156, 200, 255, .9), 0 0 2px #fff; }
-.fall.hot img, .fall.hot svg { filter: brightness(1.6) saturate(.4); }
 
 /* ---------------- Top nav ---------------- */
 .topnav {

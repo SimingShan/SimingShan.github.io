@@ -1,6 +1,6 @@
 # SimingShan.github.io
 
-Personal website of **Siming Shan** — incoming Ph.D. student in Statistics &
+Personal website of **Siming Shan** — first-year Ph.D. student in Statistics &
 Data Science at Yale University (Lu Group).
 
 Live site: <https://simingshan.github.io>

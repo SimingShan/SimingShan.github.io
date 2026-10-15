@@ -10,7 +10,13 @@
 // The sheet is then pulled into a funnel of depth ∝ 1 − √(1 − r_s/r), the
 // Schwarzschild redshift factor, which turns vertical at the throat. Faces of
 // the funnel that point away from us are culled, so text drops over the lip
-// and out of sight. Background stars are lensed by the point-mass lens equation.
+// and out of sight.
+//
+// The hole itself is ray-traced on the GPU (see "The hole, ray-traced"):
+// photons bend around a Schwarzschild black hole, so the sheet and the stars
+// are lensed into rings, a photon ring hugs the shadow, and a thin accretion
+// disk of equations is lifted over the top of it, brighter on the side that
+// swings toward us.
 //
 // Scrolling. The hole rises with the page, pins itself under the nav, and the
 // words and pictures that scroll up into it are pulled in, swirled, stretched
@@ -344,7 +350,7 @@
   }
 
   function drawStars(g, t, hole) {
-    const E = hole.rad * 1.5, E2 = 4 * E * E;
+    const E = gl ? 0 : hole.rad * 1.5, E2 = 4 * E * E;   // with WebGL the ray tracer lenses them
     const drift = t * 0.0035;
     for (const st of stars) {
       const x = ((st.x + drift * (0.4 + st.s * 0.3)) % 1) * (W + 40) - 20;
@@ -398,6 +404,8 @@
     DPR = Math.min(window.devicePixelRatio || 1, 1.5);
     W = back.clientWidth; H = back.clientHeight;
     for (const c of [back, front, layer]) { c.width = Math.round(W * DPR); c.height = Math.round(H * DPR); }
+    GDPR = Math.min(window.devicePixelRatio || 1, 1.25);
+    if (lensCanvas) { lensCanvas.width = Math.round(W * GDPR); lensCanvas.height = Math.round(H * GDPR); }
     bloomA.width = Math.max(1, Math.round(W / 4)); bloomA.height = Math.max(1, Math.round(H / 4));
     bloomB.width = Math.max(1, Math.round(W / 12)); bloomB.height = Math.max(1, Math.round(H / 12));
     buildStars();
@@ -462,9 +470,10 @@
   }
 
   /* ---------------- The hole: in the sheet, then pinned to the top ---------------- */
+  const HERO_INCL = 1.36, HERO_ROLL = -0.28;   // disk tipped to follow the sheet
   function holeAt(scroll) {
-    const rTop = clamp(Math.min(W, H) * 0.1, 44, 92);
-    const yTop = rTop + (mobile ? 58 : 70);
+    const rTop = clamp(Math.min(W, H) * 0.065, 30, 60);
+    const yTop = rTop * 1.7 + (mobile ? 54 : 64);  // room for the lensed arc above
     const travel = Math.max(1, heroHole.cy - yTop);
     const moved = Math.min(scroll, travel);
     const u = clamp(scroll / travel);
@@ -474,7 +483,12 @@
       const a = (i / heroHole.pts.length) * Math.PI * 2;
       return [cx + lerp(x, Math.cos(a) * rTop, e), cy + lerp(y, Math.sin(a) * rTop, e)];
     });
-    return { pts, cx, cy, rad: lerp(heroHole.rad, rTop, e), u, ox: cx - heroHole.cx, oy: -moved };
+    const rad = lerp(heroHole.rad * (gl ? 0.85 : 1), rTop, e);
+    return {
+      pts, cx, cy, rad, u, ox: cx - heroHole.cx, oy: -moved,
+      incl: lerp(HERO_INCL, 1.45, e), roll: lerp(HERO_ROLL, -0.06, e), gain: lerp(2.6, 2.2, e),
+      rout: lerp(10, 8, e), R: (rad / B_CRIT) * lerp(13, 10.5, e),
+    };
   }
 
   function polyPath(pts) {
@@ -539,6 +553,231 @@
     g.globalCompositeOperation = 'source-over';
   }
 
+  /* ---------------- The hole, ray-traced ----------------
+     Every pixel near the hole fires a photon back into a Schwarzschild
+     spacetime (r_s = 1) and integrates its path, using the exact orbit
+     equation in Cartesian form: a = −(3/2) h² r̂ / r⁴.
+       · paths with impact parameter b < 3√3/2 r_s fall in: the shadow
+       · paths that skim the photon sphere (r = 1.5) light the photon ring
+       · paths that cross the disk pick up Keplerian gas (and equations),
+         Doppler-beamed ∝ g⁴ and gravitationally redshifted
+       · everything else escapes and samples the sky — the sheet and the
+         stars — where it ends up: lensing and the Einstein ring. */
+  const lensCanvas = document.querySelector('.lens');
+  let gl = null, glU = {}, glBuf = null, bgTex = null, diskTex = null, GDPR = 1;
+  const bgPatch = document.createElement('canvas'), bgpctx = bgPatch.getContext('2d');
+  const B_CRIT = 2.598;     // 3√3/2: the shadow's radius, in r_s
+
+  const VERT = 'attribute vec2 aPos; void main() { gl_Position = vec4(aPos, 0.0, 1.0); }';
+  const FRAG = `
+#ifdef GL_FRAGMENT_PRECISION_HIGH
+precision highp float;
+#else
+precision mediump float;
+#endif
+uniform sampler2D uBg, uDisk;
+uniform vec2 uView, uC, uBgO;
+uniform float uDpr, uRs, uR, uT, uIncl, uRoll, uROut, uL, uBgS, uGain;
+const float RIN = 3.0;               // innermost stable circular orbit
+const float PI = 3.14159265;
+
+vec2 rot(vec2 v, float a) { float c = cos(a), s = sin(a); return vec2(c * v.x - s * v.y, s * v.x + c * v.y); }
+
+vec3 sky(vec2 css) {
+  vec2 uv = (css - uBgO) / uBgS;
+  if (uv.x < 0.0 || uv.y < 0.0 || uv.x > 1.0 || uv.y > 1.0) return vec3(0.0);
+  return texture2D(uBg, uv).rgb;
+}
+
+vec4 disk(vec3 q, vec3 dir, float r, vec3 n) {
+  vec3 e1 = vec3(1.0, 0.0, 0.0), e2 = cross(n, e1);
+  float phi = atan(dot(q, e2), dot(q, e1));
+  float s = (r - RIN) / (uROut - RIN);
+  float rc = RIN + (floor(s * 9.0) + 0.5) / 9.0 * (uROut - RIN);   // each ring of text orbits rigidly
+  float omega = sqrt(0.5 / (rc * rc * rc));                         // Kepler, M = r_s / 2
+  vec4 m = texture2D(uDisk, vec2(fract((phi - omega * uT) / (2.0 * PI)), s));
+  float beta = sqrt(0.5 / (r - 1.0));                               // orbital speed
+  float gam = 1.0 / sqrt(1.0 - beta * beta);
+  float dop = 1.0 / (gam * (1.0 + beta * dot(normalize(cross(n, q)), dir)));
+  float g = dop * sqrt(1.0 - 1.0 / r);                              // Doppler × gravitational shift
+  float x = RIN / r;
+  float I = x * x * x * (1.0 - sqrt(x)) * 16.0 * pow(g, 4.0);       // thin-disk flux, beamed
+  vec3 tint = mix(vec3(0.26, 0.4, 1.0), vec3(0.93, 0.97, 1.0), smoothstep(0.55, 1.3, g));
+  vec3 col = tint * I * (0.15 + 0.85 * m.r + 1.5 * m.g) * uGain;
+  float a = clamp(0.2 + 0.55 * m.r + 0.65 * m.g, 0.0, 0.92);
+  a *= smoothstep(RIN, RIN + 0.35, r) * (1.0 - smoothstep(uROut - 2.5, uROut, r));
+  return vec4(col * a, a);
+}
+
+void main() {
+  vec2 css = vec2(gl_FragCoord.x, uView.y * uDpr - gl_FragCoord.y) / uDpr;
+  vec2 d = css - uC;
+  float dist = length(d);
+  if (dist > uR) discard;
+  vec2 b = rot(d, -uRoll) / uRs;
+  vec3 p = vec3(b, -30.0), v = vec3(0.0, 0.0, 1.0);
+  float h2 = dot(b, b);
+  vec3 n = vec3(0.0, -sin(uIncl), -cos(uIncl));
+  vec3 col = vec3(0.0);
+  float acc = 0.0, rmin = 1e3;
+  bool captured = false;
+  for (int i = 0; i < 240; i++) {
+    float r2 = dot(p, p), r = sqrt(r2);
+    rmin = min(rmin, r);
+    if (r < 1.0) { captured = true; break; }
+    if (r > 34.0 && dot(p, v) > 0.0) break;
+    float dt = clamp(0.07 * r, 0.012, 2.0);
+    vec3 vh = v - 0.75 * dt * h2 * p / (r2 * r2 * r);
+    vec3 pn = p + dt * vh;
+    float rn2 = dot(pn, pn);
+    v = vh - 0.75 * dt * h2 * pn / (rn2 * rn2 * sqrt(rn2));
+    float s0 = dot(p, n), s1 = dot(pn, n);
+    if (s0 * s1 < 0.0 && acc < 0.98) {
+      vec3 q = mix(p, pn, s0 / (s0 - s1));
+      float rq = length(q);
+      if (rq > RIN && rq < uROut) {
+        vec4 e = disk(q, normalize(v), rq, n);
+        col += e.rgb * (1.0 - acc);
+        acc += e.a * (1.0 - acc);
+      }
+    }
+    p = pn;
+  }
+  vec3 bg = vec3(0.0);
+  if (!captured) {
+    vec3 vd = normalize(v);
+    // where the bent ray meets the sky plane, uL behind the hole
+    vec2 src = (p + vd * (uL - p.z) / max(vd.z, 0.2)).xy;
+    // rays bent past the patch wrap back onto its edge: light circling the rim
+    float edge = 0.92 * uR / uRs, ls = length(src);
+    if (ls > edge) src *= edge / ls;
+    float w = 1.0 - smoothstep(0.5, 0.95, dist / uR);    // lens fades out toward the edge of the patch
+    bg = sky(uC + rot(b + (src - b) * w, uRoll) * uRs) * (vd.z > 0.2 ? 1.0 : 0.6) * (1.0 - 0.55 * smoothstep(edge, 2.5 * edge, ls));
+    bg += vec3(0.78, 0.88, 1.0) * exp(-(rmin - 1.5) * 10.0) * 0.9;   // grazed the photon sphere
+  }
+  vec3 c = bg * (1.0 - acc) + (1.0 - exp(-col * 1.3));
+  float alpha = 1.0 - smoothstep(0.9, 1.0, dist / uR);
+  gl_FragColor = vec4(c * alpha, alpha);
+}`;
+
+  // gas filaments along the orbits (red) and rings of equations (green)
+  function buildDiskTexture() {
+    const c = document.createElement('canvas');
+    c.width = 2048; c.height = 256;
+    const g = c.getContext('2d');
+    g.fillStyle = '#000'; g.fillRect(0, 0, 2048, 256);
+    g.globalCompositeOperation = 'lighter';
+    const r = rng(42);
+    const streak = (x, y, len, w, a) => {
+      const grad = g.createLinearGradient(x, 0, x + len, 0);
+      grad.addColorStop(0, 'rgba(255,0,0,0)');
+      grad.addColorStop(0.5, `rgba(255,0,0,${a})`);
+      grad.addColorStop(1, 'rgba(255,0,0,0)');
+      g.fillStyle = grad; g.fillRect(x, y, len, w);
+    };
+    for (let i = 0; i < 320; i++) {
+      const x = r() * 2048, y = r() * 256, len = 60 + r() * 1000, w = 0.5 + r() * 2.4, a = 0.12 + r() * 0.6;
+      streak(x, y, len, w, a);
+      if (x + len > 2048) streak(x - 2048, y, len, w, a);
+    }
+    const eqs = EQUATIONS.slice();
+    const k = 18 / FS;
+    for (let row = 0; row < 9; row++) {
+      const base = ((row + 0.5) / 9) * 256 + 6;
+      let x = r() * 200;
+      while (x < 2048) {
+        const { runs, w } = layoutRuns(eqs[Math.floor(r() * eqs.length)]);
+        g.save(); g.translate(x, base); g.scale(k, k);
+        g.fillStyle = `rgba(0,255,0,${0.65 + r() * 0.35})`;
+        for (const run of runs) { g.font = run.font; g.fillText(run.t, run.x, run.dy); }
+        g.restore();
+        x += w * k + 30 + r() * 60;
+      }
+    }
+    return c;
+  }
+
+  function initGL() {
+    if (!lensCanvas) return;
+    try { gl = lensCanvas.getContext('webgl', { alpha: true, premultipliedAlpha: true, antialias: false, preserveDrawingBuffer: true }); }
+    catch (e) { gl = null; }
+    if (!gl) return;
+    const shader = (type, src) => {
+      const s = gl.createShader(type);
+      gl.shaderSource(s, src); gl.compileShader(s);
+      if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) { console.warn(gl.getShaderInfoLog(s)); return null; }
+      return s;
+    };
+    const vs = shader(gl.VERTEX_SHADER, VERT), fs = shader(gl.FRAGMENT_SHADER, FRAG);
+    const prog = vs && fs && gl.createProgram();
+    if (prog) { gl.attachShader(prog, vs); gl.attachShader(prog, fs); gl.linkProgram(prog); }
+    if (!prog || !gl.getProgramParameter(prog, gl.LINK_STATUS)) { gl = null; return; }
+    gl.useProgram(prog);
+    for (const k of ['uBg', 'uDisk', 'uView', 'uC', 'uBgO', 'uDpr', 'uRs', 'uR', 'uT', 'uIncl', 'uRoll', 'uROut', 'uL', 'uBgS', 'uGain']) {
+      glU[k] = gl.getUniformLocation(prog, k);
+    }
+    glBuf = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, glBuf);
+    const loc = gl.getAttribLocation(prog, 'aPos');
+    gl.enableVertexAttribArray(loc);
+    gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
+    gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, true);
+    const tex = (wrap) => {
+      const t = gl.createTexture();
+      gl.bindTexture(gl.TEXTURE_2D, t);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, wrap);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+      return t;
+    };
+    bgTex = tex(gl.CLAMP_TO_EDGE);
+    diskTex = tex(gl.REPEAT);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, buildDiskTexture());
+    gl.uniform1i(glU.uBg, 0);
+    gl.uniform1i(glU.uDisk, 1);
+    lensCanvas.addEventListener('webglcontextlost', (e) => { e.preventDefault(); gl = null; });
+  }
+
+  function drawLens(hole, t) {
+    const R = hole.R;
+    const x0 = Math.floor(hole.cx - R), y0 = Math.floor(hole.cy - R), size = Math.ceil(2 * R);
+    // the patch of sky the photons can land on
+    const ps = Math.max(2, Math.ceil(size * GDPR)), k = ps / size;
+    if (bgPatch.width !== ps) { bgPatch.width = ps; bgPatch.height = ps; }
+    bgpctx.fillStyle = '#020308';
+    bgpctx.fillRect(0, 0, ps, ps);
+    const sx = Math.max(0, x0), sy = Math.max(0, y0), ex = Math.min(W, x0 + size), ey = Math.min(H, y0 + size);
+    if (ex > sx && ey > sy) {
+      bgpctx.drawImage(back, sx * DPR, sy * DPR, (ex - sx) * DPR, (ey - sy) * DPR, (sx - x0) * k, (sy - y0) * k, (ex - sx) * k, (ey - sy) * k);
+    }
+    gl.viewport(0, 0, lensCanvas.width, lensCanvas.height);
+    gl.clearColor(0, 0, 0, 0);
+    gl.clear(gl.COLOR_BUFFER_BIT);
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, bgTex);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, bgPatch);
+    gl.activeTexture(gl.TEXTURE1);
+    gl.bindTexture(gl.TEXTURE_2D, diskTex);
+    gl.uniform2f(glU.uView, W, H);
+    gl.uniform1f(glU.uDpr, GDPR);
+    gl.uniform2f(glU.uC, hole.cx, hole.cy);
+    gl.uniform1f(glU.uRs, hole.rad / B_CRIT);
+    gl.uniform1f(glU.uR, R);
+    gl.uniform1f(glU.uT, t * 2.6);
+    gl.uniform1f(glU.uIncl, hole.incl);
+    gl.uniform1f(glU.uRoll, hole.roll);
+    gl.uniform1f(glU.uROut, hole.rout);
+    gl.uniform1f(glU.uL, 10);
+    gl.uniform2f(glU.uBgO, x0, y0);
+    gl.uniform1f(glU.uBgS, size);
+    gl.uniform1f(glU.uGain, hole.gain);
+    const l = (x0 / W) * 2 - 1, rr = ((x0 + size) / W) * 2 - 1, tp = 1 - (y0 / H) * 2, bt = 1 - ((y0 + size) / H) * 2;
+    gl.bindBuffer(gl.ARRAY_BUFFER, glBuf);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([l, bt, rr, bt, l, tp, rr, tp]), gl.DYNAMIC_DRAW);
+    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+  }
+
   /* ---------------- The page falling in ---------------- */
   const UNIT_SEL = '.hero-links a, .keywords li, .pub-actions a, .horizon-links a, .sec-label > span, .sec-label > i, .pub-figure, .portrait, hr.rule, .scroll-cue';
   const TEXT_SEL = '.eyebrow, .name, .hero-role, .sec-label, .about-text p, .pub-venue, .pub-title, .pub-authors, .post time, .post-title, .post-dek, .horizon-note, .copy';
@@ -576,6 +815,7 @@
     for (const u of units) {
       const r = u.el.getBoundingClientRect();
       u.x = r.left + r.width / 2; u.y = r.top + r.height / 2 + sy;
+      u.spin = clamp(140 / Math.max(r.width, r.height), 0.3, 1);   // big blocks swing round less
     }
   }
 
@@ -594,7 +834,7 @@
       if (p >= 1) { s.opacity = '0'; continue; }
       const e = Math.pow(p, 2.3);
       const dx = u.x - hole.cx, dy = wy - hole.cy;
-      const th = 1.7 * Math.pow(e, 1.25);              // swirl with the hole
+      const th = 1.7 * u.spin * Math.pow(e, 1.25);     // swirl with the hole
       const c = Math.cos(th), sn = Math.sin(th);
       const k = 1 - e;
       const nx = hole.cx + (dx * c - dy * sn) * k, ny = hole.cy + (dx * sn + dy * c) * k;
@@ -628,6 +868,8 @@
     bctx.setTransform(1, 0, 0, 1, 0, 0);
     bctx.clearRect(0, 0, back.width, back.height);
     bctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+    bctx.fillStyle = '#020308';
+    bctx.fillRect(0, 0, W, H);
     const neb = bctx.createRadialGradient(hole.cx, hole.cy, hole.rad, hole.cx, hole.cy, Math.max(W, H) * 0.6);
     neb.addColorStop(0, `rgba(60,100,180,${(0.16 + 0.06 * sheetA).toFixed(3)})`);
     neb.addColorStop(0.3, 'rgba(30,60,130,.06)');
@@ -661,7 +903,17 @@
     fctx.setTransform(1, 0, 0, 1, 0, 0);
     fctx.clearRect(0, 0, front.width, front.height);
     fctx.setTransform(DPR, 0, 0, DPR, 0, 0);
-    drawHorizon(fctx, hole, t);
+    if (gl) {
+      drawLens(hole, t);
+      // the shadow, and the disk where it crosses in front, sit above the page:
+      // whatever falls in disappears behind them
+      fctx.save();
+      fctx.beginPath(); fctx.arc(hole.cx, hole.cy, hole.rad * 1.06, 0, Math.PI * 2); fctx.clip();
+      fctx.drawImage(lensCanvas, 0, 0, W, H);
+      fctx.restore();
+    } else {
+      drawHorizon(fctx, hole, t);
+    }
 
     if (!reduceMotion) absorb(hole, smooth(0.3, 1, hole.u));
     nav.classList.toggle('past', scroll > hero.clientHeight * 0.7);
@@ -677,6 +929,7 @@
     if (running) return;
     buildFlow();
     prepareFall();
+    initGL();
     resize();
     lastW = W; lastH = H;
     measure();
