@@ -1,38 +1,28 @@
-// Homepage: a sheet of equations falls into a black hole, and then the page
-// falls in after it.
+// Homepage hero: a sheet of equations falls into a black hole.
 //
 // The sheet. Text is laid out along the streamlines of a uniform flow draining
 // into a point sink with a little swirl,
 //     u = −x̂ − (m r̂ − Γ θ̂) / 2πr,
 // so rows run straight far away and wrap into the hole near it. Tokens ride the
 // flow; because the flow is incompressible each one is stretched along the
-// stream and squeezed across it as it speeds up (spaghettification, for free).
-// The sheet is then pulled into a funnel of depth ∝ 1 − √(1 − r_s/r), the
-// Schwarzschild redshift factor, which turns vertical at the throat. Faces of
-// the funnel that point away from us are culled, so text drops over the lip
-// and out of sight.
+// stream and squeezed across it as it speeds up. The sheet is pulled into a
+// funnel of depth ∝ 1 − √(1 − r_s/r), the Schwarzschild redshift factor, which
+// turns vertical at the throat; faces of the funnel that point away from us
+// are culled, so text drops over the lip and out of sight.
 //
-// The hole itself is ray-traced on the GPU (see "The hole, ray-traced"):
-// photons bend around a Schwarzschild black hole, so the sheet and the stars
-// are lensed into rings, a photon ring hugs the shadow, and a thin accretion
-// disk of equations is lifted over the top of it, brighter on the side that
-// swings toward us.
+// The hole itself is ray-traced on the GPU: photons bend around a
+// Schwarzschild black hole, so the sheet and the stars are lensed into rings,
+// a photon ring hugs the shadow, and a thin accretion disk of equations is
+// lifted over the top of it, brighter on the side that swings toward us.
 //
-// Scrolling. The hole rises with the page and settles under the nav; from then
-// on the page is matter streaming into it. Each point of the page follows an
-// exact Schwarzschild geodesic, its light is redshifted on the way out and bent
-// by the ray tracer (see "The page, falling in"). Scroll position is the
-// distant observer's clock, so scrolling back up runs it all backwards.
+// The hole belongs to the hero and scrolls away with it; the stars stay.
 (() => {
   'use strict';
   const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
   const back = document.querySelector('.spacetime');
-  const front = document.querySelector('.horizon-layer');
   const hero = document.querySelector('.hero');
-  const nav = document.querySelector('.topnav');
-  if (!back || !front || !hero) return;
+  if (!back || !hero) return;
   const bctx = back.getContext('2d');
-  const fctx = front.getContext('2d');
 
   const rng = (seed) => () => ((seed = (seed * 1664525 + 1013904223) >>> 0) / 4294967296);
   const clamp = (x, lo = 0, hi = 1) => (x < lo ? lo : x > hi ? hi : x);
@@ -396,6 +386,7 @@
     }
   }
 
+
   /* ---------------- Canvases ---------------- */
   const layer = document.createElement('canvas'), lctx = layer.getContext('2d');
   const bloomA = document.createElement('canvas'), bactx = bloomA.getContext('2d');
@@ -404,7 +395,7 @@
   function resize() {
     DPR = Math.min(window.devicePixelRatio || 1, 1.5);
     W = back.clientWidth; H = back.clientHeight;
-    for (const c of [back, front, layer]) { c.width = Math.round(W * DPR); c.height = Math.round(H * DPR); }
+    for (const c of [back, layer]) { c.width = Math.round(W * DPR); c.height = Math.round(H * DPR); }
     GDPR = Math.min(window.devicePixelRatio || 1, 1.5);
     if (lensCanvas) { lensCanvas.width = Math.round(W * GDPR); lensCanvas.height = Math.round(H * GDPR); }
     bloomA.width = Math.max(1, Math.round(W / 4)); bloomA.height = Math.max(1, Math.round(H / 4));
@@ -470,25 +461,17 @@
     g.globalCompositeOperation = 'source-over';
   }
 
-  /* ---------------- The hole: in the sheet, then pinned to the top ---------------- */
+
+  /* ---------------- The hole ---------------- */
   const HERO_INCL = 1.36, HERO_ROLL = -0.28;   // disk tipped to follow the sheet
+  const B_CRIT = 2.598;     // 3√3/2: the shadow's radius, in r_s
   function holeAt(scroll) {
-    const rTop = clamp(Math.min(W, H) * 0.085, 34, 80);
-    const yTop = rTop * 1.7 + (mobile ? 54 : 64);  // room for the lensed arc above
-    const travel = Math.max(1, heroHole.cy - yTop);
-    const moved = Math.min(scroll, travel);
-    const u = clamp(scroll / travel);
-    const e = u * u * (3 - 2 * u);
-    const cx = lerp(heroHole.cx, W / 2, e), cy = heroHole.cy - moved;
-    const pts = heroHole.pts.map(([x, y], i) => {
-      const a = (i / heroHole.pts.length) * Math.PI * 2;
-      return [cx + lerp(x, Math.cos(a) * rTop, e), cy + lerp(y, Math.sin(a) * rTop, e)];
-    });
-    const rad = lerp(heroHole.rad * (gl ? 0.85 : 1), rTop, e);
+    const cx = heroHole.cx, cy = heroHole.cy - scroll;
+    const rad = heroHole.rad * (gl ? 0.85 : 1);
     return {
-      pts, cx, cy, rad, u, travel, pinned: scroll >= travel, ox: cx - heroHole.cx, oy: -moved,
-      incl: lerp(HERO_INCL, 1.45, e), roll: lerp(HERO_ROLL, -0.06, e), gain: lerp(2.6, 2.2, e),
-      rout: lerp(10, 8, e), R: (rad / B_CRIT) * lerp(13, 10.5, e),
+      cx, cy, rad, u: 0, ox: 0, oy: -scroll,
+      pts: heroHole.pts.map(([x, y]) => [cx + x, cy + y]),
+      incl: HERO_INCL, roll: HERO_ROLL, gain: 2.6, rout: 10, R: (rad / B_CRIT) * 13,
     };
   }
 
@@ -554,26 +537,20 @@
     g.globalCompositeOperation = 'source-over';
   }
 
+
   /* ---------------- The hole, ray-traced ----------------
      Every pixel near the hole fires a photon back into a Schwarzschild
      spacetime (r_s = 1) and integrates its path with the exact orbit equation
      in Cartesian form, a = −(3/2) h² r̂ / r⁴. Along the way it can meet
        · the accretion disk: Keplerian gas (and rings of equations), its light
          Doppler-beamed ∝ g⁴ and gravitationally redshifted
-       · the page: a face-on sheet through the hole, carrying whatever has
-         scrolled into it (see "The page, falling in")
        · the horizon: b < 3√3/2 r_s and it never comes back — the shadow
      and if it escapes, it lands on the sky (the sheet of equations and the
      stars) wherever its bent path ends: lensing, Einstein rings, photon ring. */
   const lensCanvas = document.querySelector('.lens');
-  let gl = null, GDPR = 1;
-  let lensProg = null, warpProg = null, debrisProg = null, instancing = null;
-  const LU = {}, WU = {}, DU = {};
-  let cellBuf = null, lagBuf = null, dotBuf = null, geoTex = null, cellCount = 0, cellKey = '';
-  let quadBuf = null, meshBuf = null, idxBuf = null, meshCount = 0;
-  let bgTex = null, diskTex = null, contentTex = null, pageTex = null, pageFB = null, pageW = 0, pageH = 0;
+  let gl = null, GDPR = 1, lensProg = null, quadBuf = null, bgTex = null, diskTex = null;
+  const LU = {};
   const bgPatch = document.createElement('canvas'), bgpctx = bgPatch.getContext('2d');
-  const B_CRIT = 2.598;     // 3√3/2: the shadow's radius, in r_s
 
   const LENS_VERT = 'attribute vec2 aPos; void main() { gl_Position = vec4(aPos, 0.0, 1.0); }';
   const LENS_FRAG = `
@@ -582,9 +559,9 @@ precision highp float;
 #else
 precision mediump float;
 #endif
-uniform sampler2D uBg, uDisk, uPage;
-uniform vec2 uView, uC, uBgO, uBgS, uPageS;
-uniform float uDpr, uRs, uR, uT, uIncl, uRoll, uROut, uL, uGain, uPageOn, uBand, uBandB, uS;
+uniform sampler2D uBg, uDisk;
+uniform vec2 uView, uC, uBgO, uBgS;
+uniform float uDpr, uRs, uR, uT, uIncl, uRoll, uROut, uL, uGain;
 const float RIN = 3.0;               // innermost stable circular orbit
 const float PI = 3.14159265;
 
@@ -594,12 +571,6 @@ vec3 sky(vec2 css) {
   vec2 uv = (css - uBgO) / uBgS;
   if (uv.x < 0.0 || uv.y < 0.0 || uv.x > 1.0 || uv.y > 1.0) return vec3(0.0);
   return texture2D(uBg, uv).rgb;
-}
-
-vec4 page(vec2 css) {
-  vec2 uv = vec2(css.x / uPageS.x, 1.0 - css.y / uPageS.y);
-  if (uPageOn < 0.5 || uv.x < 0.0 || uv.y < 0.0 || uv.x > 1.0 || uv.y > 1.0) return vec4(0.0);
-  return texture2D(uPage, uv);
 }
 
 vec4 disk(vec3 q, vec3 dir, float r, vec3 n) {
@@ -626,27 +597,15 @@ void main() {
   vec2 css = vec2(gl_FragCoord.x, uView.y * uDpr - gl_FragCoord.y) / uDpr;
   vec2 d = css - uC;
   float dist = length(d);
-  float alpha;
-  if (uBand > 0.5) {
-    alpha = 1.0 - smoothstep(uBandB - 18.0, uBandB, css.y);
-  } else {
-    if (dist > uR) discard;
-    alpha = 1.0 - smoothstep(0.9 * uR, uR, dist);
-  }
-  if (dist > uR) {                      // beyond the tracer's reach: flat space
-    vec4 pg = page(css);
-    gl_FragColor = vec4((pg.rgb + (1.0 - pg.a) * sky(css)) * alpha, alpha);
-    return;
-  }
-  // bending is let through in full near the hole and faded out at the seams with flat space
-  float wSky = 1.0 - smoothstep(0.5, 0.95, dist / uR);
-  float wPage = uS * (1.0 - smoothstep(0.7, 1.0, dist / uR)) * (1.0 - uBand * smoothstep(uBandB - 220.0, uBandB - 10.0, css.y));
+  if (dist > uR) discard;
+  float alpha = 1.0 - smoothstep(0.9 * uR, uR, dist);
+  float w = 1.0 - smoothstep(0.5, 0.95, dist / uR);     // lens fades out toward the edge of the patch
 
   vec2 b = rot(d, -uRoll) / uRs;
   vec3 p = vec3(b, -30.0), v = vec3(0.0, 0.0, 1.0);
   float h2 = dot(b, b);
   vec3 n = vec3(0.0, -sin(uIncl), -cos(uIncl));
-  vec3 colD = vec3(0.0), colP = vec3(0.0);
+  vec3 col = vec3(0.0);
   float acc = 0.0, rmin = 1e3;
   bool captured = false;
   for (int i = 0; i < 240; i++) {
@@ -659,31 +618,14 @@ void main() {
     vec3 pn = p + dt * vh;
     float rn2 = dot(pn, pn);
     v = vh - 0.75 * dt * h2 * pn / (rn2 * rn2 * sqrt(rn2));
-    if (acc < 0.98) {
-      float s0 = dot(p, n), s1 = dot(pn, n);
-      if (s0 * s1 < 0.0) {
-        vec3 q = mix(p, pn, s0 / (s0 - s1));
-        float rq = length(q);
-        if (rq > RIN && rq < uROut) {
-          vec4 e = disk(q, normalize(v), rq, n);
-          colD += e.rgb * (1.0 - acc);
-          acc += e.a * (1.0 - acc);
-        }
-      }
-      if (uPageOn > 0.5 && p.z * pn.z < 0.0) {
-        vec3 q = mix(p, pn, p.z / (p.z - pn.z));
-        if (dot(q, q) > 1.0) {
-          // Weak-field bending alone (x'' = −2Mb/(b² + z²)^{3/2}, from the camera
-          // at z = −30 with no slope) lands the ray on the page plane
-          // Δ(b) = [b − √(b²+900) + 900/√(b²+900)]/b r_s closer to the hole: a
-          // near-constant offset that never dies away. Positions are measured
-          // in that lensed frame, so what shows is the strong-field bending.
-          float bl = max(length(b), 1e-3), sb = sqrt(bl * bl + 900.0);
-          vec2 hit = q.xy + b / bl * (bl - sb + 900.0 / sb) / bl;
-          vec4 pg = page(css + (uC + rot(hit, uRoll) * uRs - css) * wPage);
-          colP += pg.rgb * (1.0 - acc);
-          acc += pg.a * (1.0 - acc);
-        }
+    float s0 = dot(p, n), s1 = dot(pn, n);
+    if (s0 * s1 < 0.0 && acc < 0.98) {
+      vec3 q = mix(p, pn, s0 / (s0 - s1));
+      float rq = length(q);
+      if (rq > RIN && rq < uROut) {
+        vec4 e = disk(q, normalize(v), rq, n);
+        col += e.rgb * (1.0 - acc);
+        acc += e.a * (1.0 - acc);
       }
     }
     p = pn;
@@ -696,99 +638,11 @@ void main() {
     // rays bent past the patch wrap back onto its edge: light circling the rim
     float edge = 0.92 * uR / uRs, ls = length(src);
     if (ls > edge) src *= edge / ls;
-    bg = sky(uC + rot(b + (src - b) * wSky, uRoll) * uRs) * (vd.z > 0.2 ? 1.0 : 0.6) * (1.0 - 0.55 * smoothstep(edge, 2.5 * edge, ls));
+    bg = sky(uC + rot(b + (src - b) * w, uRoll) * uRs) * (vd.z > 0.2 ? 1.0 : 0.6) * (1.0 - 0.55 * smoothstep(edge, 2.5 * edge, ls));
     bg += vec3(0.78, 0.88, 1.0) * exp(-(rmin - 1.5) * 10.0) * 0.9;   // grazed the photon sphere
   }
-  vec3 c = colP + (1.0 - exp(-colD * 1.3)) + bg * (1.0 - acc);
+  vec3 c = bg * (1.0 - acc) + (1.0 - exp(-col * 1.3));
   gl_FragColor = vec4(c * alpha, alpha);
-}`;
-
-  // light climbing out of the well is stretched toward the red and dimmed as g⁴
-  const REDSHIFT = `
-vec3 redshift(vec3 c, float g) {
-  g = clamp(g, 0.0, 1.0);
-  float lum = dot(c, vec3(0.3, 0.55, 0.15));
-  vec3 red = lum * mix(vec3(1.0, 0.16, 0.04), vec3(1.0, 0.58, 0.26), smoothstep(0.4, 0.8, g));
-  return mix(red, c, smoothstep(0.8, 0.98, g)) * pow(g, 4.0);
-}`;
-
-  // The intact page: the browser's layout drawn onto a mesh whose vertices
-  // have been carried along their geodesics. It lets go of the parts that
-  // have been inside the tidal radius; the debris pass draws those.
-  const WARP_VERT = `
-attribute vec2 aPos;
-attribute vec2 aUV;
-attribute float aG;
-attribute float aR;
-uniform vec2 uFB;
-uniform float uRt, uQ;
-varying vec2 vUV;
-varying float vG, vI;
-void main() {
-  vUV = aUV; vG = aG;
-  vI = 1.0 - (1.0 - smoothstep(uRt * 0.8, uRt * 1.1, aR)) * uQ;
-  gl_Position = vec4(aPos.x / uFB.x * 2.0 - 1.0, 1.0 - aPos.y / uFB.y * 2.0, 0.0, 1.0);
-}`;
-  const WARP_FRAG = `
-precision mediump float;
-uniform sampler2D uContent;
-varying vec2 vUV;
-varying float vG, vI;
-${REDSHIFT}
-void main() {
-  vec4 c = texture2D(uContent, vUV);
-  gl_FragColor = vec4(redshift(c.rgb, vG), c.a) * vI;
-}`;
-
-  // The debris: one particle per few pixels of the page, coloured by the
-  // pixel it came from, at its place on its own geodesic (looked up on the
-  // GPU). Drawn as a dot, and as a trail back along the orbit it just flew.
-  const debrisVert = () => `
-attribute vec2 aCell;      // where on the undisturbed page this particle came from, 0…1
-attribute float aLag;      // how far back along its orbit this vertex sits, r_s/c
-uniform sampler2D uGeo, uContent;
-uniform vec2 uFB, uSrcO, uSrcS, uC;
-uniform float uRs, uS, uQ, uRt, uPt, uLagMax;
-uniform mediump float uDot;          // shared with the fragment shader: same precision
-varying vec4 vCol;
-const float NT = ${NT}.0, NB = ${NB}.0, DB = ${DB}, DTT = ${DTT}, U = ${U_IN}, YIN = ${Y_IN}.0;
-${REDSHIFT}
-vec4 geo(float b, float T) {
-  float ab = abs(b);
-  if (T <= 0.0 || ab >= (NB - 1.0) * DB) return vec4(b, YIN - U * T, 1.0, 99.0);
-  float fi = ab / DB, fj = min(T / DTT, NT - 1.001);
-  float i0 = floor(fi), j0 = floor(fj);
-  vec2 px = vec2(1.0 / NT, 1.0 / NB);
-  vec2 uv = (vec2(j0, i0) + 0.5) * px;
-  vec4 a = texture2D(uGeo, uv), b1 = texture2D(uGeo, uv + vec2(px.x, 0.0));
-  vec4 c = texture2D(uGeo, uv + vec2(0.0, px.y)), d = texture2D(uGeo, uv + px);
-  vec4 r = mix(mix(a, b1, fj - j0), mix(c, d, fj - j0), fi - i0);
-  r.x *= b < 0.0 ? -1.0 : 1.0;
-  return r;
-}
-void main() {
-  vec2 rel = (uSrcO + aCell * uSrcS - uC) / uRs;
-  float T = (YIN - rel.y) / U;
-  float torn = (1.0 - smoothstep(uRt * 0.8, uRt * 1.1, geo(rel.x, T).w)) * uQ;
-  vec4 at = geo(rel.x, T - aLag);
-  vec4 c = texture2D(uContent, aCell);
-  float r = length(at.xy);
-  float alive = step(1.03, r);                       // frozen onto the horizon: gone from view
-  float glow = 1.0 - smoothstep(2.0 * uRt, 3.5 * uRt, r);   // heated at pericentre, cools as it leaves
-  vCol = vec4(redshift(c.rgb, at.z), c.a) * torn * alive * glow * (1.0 - aLag / uLagMax);
-  vec2 pos = uC + mix(rel, at.xy, uS) * uRs;
-  gl_Position = vec4(pos.x / uFB.x * 2.0 - 1.0, 1.0 - pos.y / uFB.y * 2.0, 0.0, 1.0);
-  // invisible dots are moved off screen (trails just fade: moving one end would drag a line across)
-  if (uDot > 0.5 && vCol.a < 0.003) gl_Position = vec4(2.0, 2.0, 2.0, 1.0);
-  gl_PointSize = uPt;
-}`;
-  const DEBRIS_FRAG = `
-precision mediump float;
-uniform float uDot;
-varying vec4 vCol;
-void main() {
-  float k = uDot > 0.5 ? 1.0 - smoothstep(0.3, 0.5, length(gl_PointCoord - 0.5)) : 0.55;
-  gl_FragColor = vCol * k;
 }`;
 
   // gas filaments along the orbits (red) and rings of equations (green)
@@ -851,28 +705,11 @@ void main() {
     catch (e) { gl = null; }
     if (!gl) return;
     lensProg = program(LENS_VERT, LENS_FRAG, ['aPos']);
-    warpProg = program(WARP_VERT, WARP_FRAG, ['aPos', 'aUV', 'aG', 'aR']);
-    if (!lensProg || !warpProg) { gl = null; return; }
-    // debris needs float textures read from the vertex shader, and instancing
-    instancing = gl.getExtension('ANGLE_instanced_arrays');
-    if (instancing && gl.getExtension('OES_texture_float') && gl.getParameter(gl.MAX_VERTEX_TEXTURE_IMAGE_UNITS) >= 2) {
-      debrisProg = program(debrisVert(), DEBRIS_FRAG, ['aCell', 'aLag']);
-    }
-    if (debrisProg) {
-      for (const k of ['uGeo', 'uContent', 'uFB', 'uSrcO', 'uSrcS', 'uC', 'uRs', 'uS', 'uQ', 'uRt', 'uPt', 'uLagMax', 'uDot']) {
-        DU[k] = gl.getUniformLocation(debrisProg, k);
-      }
-      cellBuf = gl.createBuffer(); lagBuf = gl.createBuffer(); dotBuf = gl.createBuffer();
-    }
-    for (const k of ['uBg', 'uDisk', 'uPage', 'uView', 'uC', 'uBgO', 'uBgS', 'uPageS', 'uDpr', 'uRs', 'uR', 'uT',
-      'uIncl', 'uRoll', 'uROut', 'uL', 'uGain', 'uPageOn', 'uBand', 'uBandB', 'uS']) {
+    if (!lensProg) { gl = null; return; }
+    for (const k of ['uBg', 'uDisk', 'uView', 'uC', 'uBgO', 'uBgS', 'uDpr', 'uRs', 'uR', 'uT', 'uIncl', 'uRoll', 'uROut', 'uL', 'uGain']) {
       LU[k] = gl.getUniformLocation(lensProg, k);
     }
-    WU.uFB = gl.getUniformLocation(warpProg, 'uFB');
-    WU.uContent = gl.getUniformLocation(warpProg, 'uContent');
-    WU.uRt = gl.getUniformLocation(warpProg, 'uRt');
-    WU.uQ = gl.getUniformLocation(warpProg, 'uQ');
-    quadBuf = gl.createBuffer(); meshBuf = gl.createBuffer(); idxBuf = gl.createBuffer();
+    quadBuf = gl.createBuffer();
     gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, true);
     const tex = (wrap) => {
       const t = gl.createTexture();
@@ -884,19 +721,8 @@ void main() {
       return t;
     };
     bgTex = tex(gl.CLAMP_TO_EDGE);
-    contentTex = tex(gl.CLAMP_TO_EDGE);
-    pageTex = tex(gl.CLAMP_TO_EDGE);
     diskTex = tex(gl.REPEAT);
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, buildDiskTexture());
-    pageFB = gl.createFramebuffer();
-    if (debrisProg) {
-      geoTex = gl.createTexture();
-      gl.bindTexture(gl.TEXTURE_2D, geoTex);
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
-    }
     lensCanvas.addEventListener('webglcontextlost', (e) => { e.preventDefault(); gl = null; });
   }
 
@@ -916,20 +742,19 @@ void main() {
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, bgPatch);
   }
 
-  function drawLens(hole, t, band) {
-    let x0, y0, w, h;
-    if (band) { x0 = 0; y0 = 0; w = W; h = band.bottom; }
-    else { x0 = Math.floor(hole.cx - hole.R); y0 = Math.floor(hole.cy - hole.R); w = h = Math.ceil(2 * hole.R); }
-    uploadSky(x0, y0, w, h);
-    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  function clearLens() {
     gl.viewport(0, 0, lensCanvas.width, lensCanvas.height);
-    gl.disable(gl.BLEND);
     gl.clearColor(0, 0, 0, 0);
     gl.clear(gl.COLOR_BUFFER_BIT);
+  }
+
+  function drawLens(hole, t) {
+    const x0 = Math.floor(hole.cx - hole.R), y0 = Math.floor(hole.cy - hole.R), size = Math.ceil(2 * hole.R);
+    uploadSky(x0, y0, size, size);
+    clearLens();
     gl.useProgram(lensProg);
     gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, diskTex);
-    gl.activeTexture(gl.TEXTURE2); gl.bindTexture(gl.TEXTURE_2D, pageTex);
-    gl.uniform1i(LU.uBg, 0); gl.uniform1i(LU.uDisk, 1); gl.uniform1i(LU.uPage, 2);
+    gl.uniform1i(LU.uBg, 0); gl.uniform1i(LU.uDisk, 1);
     gl.uniform2f(LU.uView, W, H);
     gl.uniform1f(LU.uDpr, GDPR);
     gl.uniform2f(LU.uC, hole.cx, hole.cy);
@@ -942,424 +767,15 @@ void main() {
     gl.uniform1f(LU.uL, 10);
     gl.uniform1f(LU.uGain, hole.gain);
     gl.uniform2f(LU.uBgO, x0, y0);
-    gl.uniform2f(LU.uBgS, w, h);
-    gl.uniform1f(LU.uPageOn, band ? 1 : 0);
-    gl.uniform2f(LU.uPageS, W, band ? band.bottom : 1);
-    gl.uniform1f(LU.uBand, band ? 1 : 0);
-    gl.uniform1f(LU.uBandB, band ? band.bottom : 0);
-    gl.uniform1f(LU.uS, band ? band.s : 0);
-    const l = (x0 / W) * 2 - 1, r = ((x0 + w) / W) * 2 - 1, tp = 1 - (y0 / H) * 2, bt = 1 - ((y0 + h) / H) * 2;
+    gl.uniform2f(LU.uBgS, size, size);
+    const l = (x0 / W) * 2 - 1, r = ((x0 + size) / W) * 2 - 1, tp = 1 - (y0 / H) * 2, bt = 1 - ((y0 + size) / H) * 2;
     gl.bindBuffer(gl.ARRAY_BUFFER, quadBuf);
     gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([l, bt, r, bt, l, tp, r, tp]), gl.DYNAMIC_DRAW);
     gl.enableVertexAttribArray(0);
-    gl.disableVertexAttribArray(1);
-    gl.disableVertexAttribArray(2);
     gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
   }
 
-  /* ---------------- The page, falling in ----------------
-     Once the hole has settled at the top, the page is treated as a sheet of
-     matter streaming up toward it at U_IN (in units of c), lying in the plane
-     through the hole that faces us. Every point of it is a massive test
-     particle on an exact Schwarzschild geodesic,
-         d²r/dτ² = −1/2r² + L²/r³ − 3L²/2r⁴,   dφ/dτ = L/r²,   dt/dτ = E/(1 − 1/r),
-     with E and L fixed by where it enters and how fast it is moving there, and
-     it is drawn where it is at the coordinate time t of a distant observer
-     (us); scrolling is that clock.
-
-     Tidal disruption. While its path stays outside the tidal radius R_T the
-     page holds together and is drawn as a continuous sheet (neighbouring
-     points on neighbouring orbits: it stretches, it doesn't tear). Once a
-     point has been inside R_T, the hole's tidal pull has beaten whatever held
-     it to its neighbours: it is debris, drawn as a particle of exactly its own
-     colour, trailing the last stretch of its own orbit. Debris on nearly
-     critical orbits (L ≈ 2 r_s c) whirls round the hole a few times before
-     plunging, so the stream wraps the horizon in strands: spaghetti.
-
-     From out here nothing ever crosses: as r → r_s the debris slows, its
-     light is shifted by g = (1 − 1/r)/E (gravitational × transverse Doppler,
-     relative to where it entered), reddens and fades as g⁴, and freezes onto
-     the horizon. Its light then still has to climb past the hole to reach us:
-     the ray tracer above bends it, and whatever is behind the hole is hidden. */
-  const U_IN = 0.24;                    // the page's speed, v/c
-  const Y_IN = 8;                       // gravity takes hold this many r_s below the hole
-  const R_T = 4.2;                      // tidal radius, r_s
-  const DB = 0.06, NB = 500;            // impact parameters 0 … 30 r_s
-  const DTT = 0.25, NT = 960;           // coordinate time 0 … 240 r_s/c
-  let GEO_T = null;                     // per sample: x, y, g, closest approach so far
-
-  function buildGeodesics() {
-    GEO_T = new Float32Array(NB * NT * 4);
-    for (let i = 0; i < NB; i++) {
-      const o = i * NT * 4;
-      let x = i * DB, y = Y_IN;
-      let r = Math.hypot(x, y), phi = Math.atan2(y, x), t = 0;
-      // the page moves at (0, −U) in our coordinates; a static observer there
-      // measures dr/(f dt) radially and r dφ/(√f dt) across, f = 1 − 1/r
-      const f0 = 1 - 1 / r;
-      const vr = (-U_IN * (y / r)) / f0, vp = (-U_IN * (x / r)) / Math.sqrt(f0);
-      const gam = 1 / Math.sqrt(1 - vr * vr - vp * vp);
-      const E = gam * Math.sqrt(f0), L = gam * vp * r;
-      let pr = gam * vr * Math.sqrt(f0);
-      const g0 = f0 / E;
-      let g = 1, rmin = r, j = 0;
-      const put = (jj, xx, yy, gg, rr) => { const k = o + jj * 4; GEO_T[k] = xx; GEO_T[k + 1] = yy; GEO_T[k + 2] = gg; GEO_T[k + 3] = rr; };
-      put(0, x, y, 1, r);
-      const acc = (rr) => -0.5 / (rr * rr) + (L * L) / (rr * rr * rr) - (1.5 * L * L) / (rr * rr * rr * rr);
-      while (j < NT - 1 && r > 1.002) {
-        const h = Math.min(0.05 * r, 0.6) * (1 - 1 / r);
-        // RK4 in proper time on (r, dr/dτ); φ and t ride along by Simpson's rule
-        const k1r = pr, k1p = acc(r);
-        const r2 = r + 0.5 * h * k1r, p2 = pr + 0.5 * h * k1p;
-        const k2r = p2, k2p = acc(r2);
-        const r3 = r + 0.5 * h * k2r, p3 = pr + 0.5 * h * k2p;
-        const k3r = p3, k3p = acc(r3);
-        const r4 = r + h * k3r, p4 = pr + h * k3p;
-        const k4r = p4, k4p = acc(r4);
-        let nr = r + (h / 6) * (k1r + 2 * k2r + 2 * k3r + k4r);
-        const npr = pr + (h / 6) * (k1p + 2 * k2p + 2 * k3p + k4p);
-        nr = Math.max(nr, 1.0015);
-        const dphi = (h / 6) * L * (1 / (r * r) + 8 / (r2 * r2 + r3 * r3) + 1 / (nr * nr));   // Simpson: midpoint 4/r_mid²
-        const dt = (h / 6) * E * (1 / (1 - 1 / r) + 4 / (1 - 2 / (r2 + r3)) + 1 / (1 - 1 / nr));
-        const nphi = phi + dphi, nt = t + dt;
-        const nx = nr * Math.cos(nphi), ny = nr * Math.sin(nphi), ng = (1 - 1 / nr) / E / g0;
-        const nmin = Math.min(rmin, nr);
-        while (j < NT - 1 && (j + 1) * DTT <= nt) {
-          j++;
-          const a = (j * DTT - t) / (nt - t);
-          put(j, x + (nx - x) * a, y + (ny - y) * a, g + (ng - g) * a, rmin + (nmin - rmin) * a);
-        }
-        r = nr; pr = npr; phi = nphi; t = nt; x = nx; y = ny; g = ng; rmin = nmin;
-      }
-      // frozen onto the horizon (as far as we can ever tell): hold the last state
-      for (j++; j < NT; j++) put(j, x, y, g, rmin);
-    }
-  }
-
-  // where the particle that entered at impact parameter b is, T after it entered
-  function geoAt(b, T, out) {
-    const ab = Math.abs(b);
-    if (T <= 0 || ab >= (NB - 1) * DB) { out.x = b; out.y = Y_IN - U_IN * T; out.g = 1; out.rmin = 99; return; }
-    const fi = ab / DB, i0 = fi | 0, fb = fi - i0;
-    const fj = Math.min(T / DTT, NT - 1.001), j0 = fj | 0, ft = fj - j0;
-    const k00 = (i0 * NT + j0) * 4, k10 = k00 + NT * 4;
-    const bil = (c) => (GEO_T[k00 + c] * (1 - ft) + GEO_T[k00 + 4 + c] * ft) * (1 - fb) + (GEO_T[k10 + c] * (1 - ft) + GEO_T[k10 + 4 + c] * ft) * fb;
-    out.x = (b < 0 ? -1 : 1) * bil(0);
-    out.y = bil(1);
-    out.g = bil(2);
-    out.rmin = bil(3);
-  }
-
-  /* The page itself, redrawn: every word, chip, rule and picture is painted
-     once into its own little canvas from its computed style, and those are
-     laid out exactly where the browser put them. */
-  const UNIT_SEL = '.hero-links a, .keywords li, .pub-actions a, .horizon-links a, .sec-label > span, .sec-label > i, .pub-figure, .portrait, hr.rule, .scroll-cue';
-  const TEXT_SEL = '.eyebrow, .name, .hero-role, .sec-label, .about-text p, .pub-venue, .pub-title, .pub-authors, .post time, .post-title, .post-dek, .horizon-note, .copy';
-  const units = [];
-  const svgImages = new Map();
-  const contentCanvas = document.createElement('canvas'), cctx = contentCanvas.getContext('2d');
-  const CLEAR = /^(transparent|rgba\(0, 0, 0, 0\))$/;
-  let SDPR = 1, measureGen = 0;
-
-  function prepareReplica() {
-    document.querySelectorAll(UNIT_SEL).forEach((el) => { el.classList.add('unit'); units.push({ el }); });
-    document.querySelectorAll(TEXT_SEL).forEach((root) => {
-      const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
-      const nodes = [];
-      while (walker.nextNode()) nodes.push(walker.currentNode);
-      for (const node of nodes) {
-        if (node.parentElement.closest('.unit')) continue;
-        const parts = node.nodeValue.split(/([ \t\n\r]+)/);
-        if (!parts.some((s) => s.trim())) continue;
-        const frag = document.createDocumentFragment();
-        for (const part of parts) {
-          if (!part) continue;
-          if (!part.trim()) { frag.appendChild(document.createTextNode(part)); continue; }
-          const w = document.createElement('span');
-          w.className = 'w';
-          w.textContent = part;
-          frag.appendChild(w);
-          units.push({ el: w });
-        }
-        node.parentNode.replaceChild(frag, node);
-      }
-      root.classList.add('split');
-    });
-    // inline SVG artwork, rasterised once
-    document.querySelectorAll('.pub-art svg').forEach((svg) => {
-      const clone = svg.cloneNode(true);
-      clone.setAttribute('width', 640); clone.setAttribute('height', 360);
-      const img = new Image();
-      img.onload = () => { svgImages.set(svg, img); measure(); };
-      img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(new XMLSerializer().serializeToString(clone));
-    });
-    document.querySelectorAll('.portrait img, .pub-figure img').forEach((img) => {
-      if (!img.complete) img.addEventListener('load', () => measure(), { once: true });
-    });
-  }
-
-  function roundRect(g, x, y, w, h, r) {
-    g.beginPath();
-    if (g.roundRect && r > 0) g.roundRect(x, y, w, h, r); else g.rect(x, y, w, h);
-  }
-
-  function paintText(node, cs, g, ox, oy) {
-    const raw = node.nodeValue, start = raw.search(/\S/);
-    if (start < 0) return;
-    const end = raw.trimEnd().length;
-    const range = document.createRange();
-    range.setStart(node, start); range.setEnd(node, end);
-    const rects = range.getClientRects();
-    if (!rects.length) return;
-    const rr = rects[0];
-    let text = raw.slice(start, end).replace(/\s+/g, ' ');
-    if (cs.textTransform === 'uppercase') text = text.toUpperCase();
-    g.save();
-    g.font = `${cs.fontStyle} ${cs.fontWeight} ${cs.fontSize} ${cs.fontFamily}`;
-    if ('letterSpacing' in g) g.letterSpacing = cs.letterSpacing === 'normal' ? '0px' : cs.letterSpacing;
-    const m = g.measureText(text), fs = parseFloat(cs.fontSize);
-    const A = m.fontBoundingBoxAscent ?? fs * 0.8, D = m.fontBoundingBoxDescent ?? fs * 0.2;
-    const base = rr.top + (rr.height - (A + D)) / 2 + A - oy;
-    if (/gradient/.test(cs.backgroundImage) && CLEAR.test(cs.color)) {
-      // background-clip: text — the gradient on the name
-      const gr = g.createLinearGradient(rr.left - ox, 0, rr.right - ox, 0);
-      gr.addColorStop(0.1, '#ffffff'); gr.addColorStop(0.7, '#9cc8ff'); gr.addColorStop(1, '#6f9fe6');
-      g.fillStyle = gr;
-    } else {
-      g.fillStyle = cs.color;
-    }
-    const sh = cs.textShadow !== 'none' && cs.textShadow.match(/(rgba?\([^)]*\))\s+(-?[\d.]+)px\s+(-?[\d.]+)px\s+([\d.]+)px/);
-    if (sh) { g.shadowColor = sh[1]; g.shadowBlur = parseFloat(sh[4]) * SDPR; }
-    g.fillText(text, rr.left - ox, base);
-    g.restore();
-  }
-
-  function paintEl(el, g, ox, oy) {
-    const cs = getComputedStyle(el);
-    if (cs.display === 'none' || cs.visibility === 'hidden') return;
-    const r = el.getBoundingClientRect();
-    const x = r.left - ox, y = r.top - oy, w = r.width, h = r.height;
-    const rad = parseFloat(cs.borderTopLeftRadius) || 0;
-    if (!CLEAR.test(cs.backgroundColor)) { g.fillStyle = cs.backgroundColor; roundRect(g, x, y, w, h, rad); g.fill(); }
-    const clip = cs.overflow === 'hidden';
-    if (clip) { g.save(); roundRect(g, x, y, w, h, rad); g.clip(); }
-    const tag = el.tagName.toLowerCase();
-    if (tag === 'img') {
-      if (el.complete && el.naturalWidth) {
-        g.save();
-        if (cs.filter !== 'none' && 'filter' in g) g.filter = cs.filter;
-        const s = Math.max(w / el.naturalWidth, h / el.naturalHeight), sw = w / s, shh = h / s;
-        g.drawImage(el, (el.naturalWidth - sw) / 2, (el.naturalHeight - shh) / 2, sw, shh, x, y, w, h);
-        g.restore();
-      }
-    } else if (tag === 'svg') {
-      const im = svgImages.get(el);
-      if (im) g.drawImage(im, x, y, w, h);
-    } else {
-      for (const n of el.childNodes) {
-        if (n.nodeType === 3) paintText(n, cs, g, ox, oy);
-        else if (n.nodeType === 1) paintEl(n, g, ox, oy);
-      }
-    }
-    if (clip) g.restore();
-    const bt = parseFloat(cs.borderTopWidth) || 0, bb = parseFloat(cs.borderBottomWidth) || 0;
-    if (bt > 0 && cs.borderTopStyle !== 'none') {
-      g.strokeStyle = cs.borderTopColor; g.lineWidth = bt;
-      roundRect(g, x + bt / 2, y + bt / 2, w - bt, h - bt, Math.max(0, rad - bt / 2));
-      g.stroke();
-    } else if (bb > 0 && cs.borderBottomStyle !== 'none') {
-      g.fillStyle = cs.borderBottomColor;
-      g.fillRect(x, y + h - bb, w, bb);
-    }
-  }
-
-  function measure() {
-    if (!gl) return;
-    SDPR = Math.min(window.devicePixelRatio || 1, 1.5);
-    const sy = window.scrollY;
-    for (const u of units) {
-      const r = u.el.getBoundingClientRect();
-      const pad = getComputedStyle(u.el).textShadow !== 'none' ? 48 : 4;
-      u.x = r.left - pad; u.y = r.top + sy - pad;
-      u.w = r.width + 2 * pad; u.h = r.height + 2 * pad;
-      if (r.width < 1 || r.height < 1) { u.spr = null; continue; }
-      const c = u.spr || document.createElement('canvas');
-      c.width = Math.ceil(u.w * SDPR); c.height = Math.ceil(u.h * SDPR);
-      const g = c.getContext('2d');
-      g.setTransform(SDPR, 0, 0, SDPR, 0, 0);
-      paintEl(u.el, g, r.left - pad, r.top - pad);
-      u.spr = c;
-    }
-    measureGen++;
-  }
-
-  // the stretch of the page (in its undisturbed layout) that can be on screen in the band
-  function paintContent(top, bottom) {
-    const w = Math.round(W * SDPR), h = Math.round((bottom - top) * SDPR);
-    if (contentCanvas.width !== w || contentCanvas.height !== h) { contentCanvas.width = w; contentCanvas.height = h; }
-    else cctx.clearRect(0, 0, w, h);
-    const y0 = window.scrollY + top, y1 = window.scrollY + bottom;
-    for (const u of units) {
-      if (!u.spr || u.y + u.h < y0 || u.y > y1) continue;
-      cctx.drawImage(u.spr, Math.round(u.x * SDPR), Math.round((u.y - y0) * SDPR));
-    }
-  }
-
-  let meshV = null, meshI = null;
-  const GEO = {};
-  const LAGS = [0, 1.1, 1.1, 2.2, 2.2, 3.3, 3.3, 4.4], LAG_MAX = 4.45;   // trail: 4 segments of orbit, r_s/c
-
-  function uploadGeodesics() {
-    if (!debrisProg || !GEO_T) return;
-    gl.activeTexture(gl.TEXTURE4);
-    gl.bindTexture(gl.TEXTURE_2D, geoTex);
-    gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false);
-    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, NT, NB, 0, gl.RGBA, gl.FLOAT, GEO_T);
-    gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, true);
-    gl.bindBuffer(gl.ARRAY_BUFFER, lagBuf);
-    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(LAGS), gl.STATIC_DRAW);
-    gl.bindBuffer(gl.ARRAY_BUFFER, dotBuf);
-    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([0]), gl.STATIC_DRAW);
-  }
-
-  function drawPage(hole, band) {
-    const rs = hole.rad / B_CRIT;
-    const top = band.srcTop, bottom = band.bottom, sh = bottom - top;
-    const q = smooth(0.6, 1, band.s);     // tidal disruption comes in with gravity
-    paintContent(top, bottom);
-    gl.activeTexture(gl.TEXTURE3);
-    gl.bindTexture(gl.TEXTURE_2D, contentTex);
-    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, contentCanvas);
-
-    // the intact sheet: a mesh over the undisturbed page, each vertex moved along its geodesic
-    const step = Math.max(8, Math.ceil(Math.sqrt((W * sh) / 50000)));
-    const nx = Math.ceil(W / step) + 1, ny = Math.ceil(sh / step) + 1;
-    if (!meshV || meshV.length < nx * ny * 6) meshV = new Float32Array(nx * ny * 6);
-    for (let j = 0; j < ny; j++) {
-      const y = Math.min(bottom, top + j * step);
-      const by = (y - hole.cy) / rs, T = (Y_IN - by) / U_IN;
-      for (let i = 0; i < nx; i++) {
-        const x = Math.min(W, i * step);
-        const bx = (x - hole.cx) / rs;
-        geoAt(bx, T, GEO);
-        const k = (j * nx + i) * 6;
-        meshV[k] = hole.cx + lerp(bx, GEO.x, band.s) * rs;
-        meshV[k + 1] = hole.cy + lerp(by, GEO.y, band.s) * rs;
-        meshV[k + 2] = x / W;
-        meshV[k + 3] = (y - top) / sh;
-        meshV[k + 4] = lerp(1, GEO.g, band.s);
-        meshV[k + 5] = GEO.rmin;
-      }
-    }
-    // where neighbours part company — one captured, the next flung past — the sheet tears
-    const max2 = (step * 5) ** 2;
-    const far = (a, b) => (meshV[a * 6] - meshV[b * 6]) ** 2 + (meshV[a * 6 + 1] - meshV[b * 6 + 1]) ** 2 > max2;
-    const gone = (a) => meshV[a * 6 + 4] < 0.03 || (q > 0.99 && meshV[a * 6 + 5] < R_T * 0.8);
-    if (!meshI || meshI.length < (nx - 1) * (ny - 1) * 6) meshI = new Uint16Array((nx - 1) * (ny - 1) * 6);
-    let m = 0;
-    for (let j = 0; j < ny - 1; j++) {
-      for (let i = 0; i < nx - 1; i++) {
-        const a = j * nx + i, b = a + 1, c = a + nx, d = c + 1;
-        if (!(far(a, b) || far(b, c) || far(a, c) || (gone(a) && gone(b) && gone(c)))) { meshI[m++] = a; meshI[m++] = b; meshI[m++] = c; }
-        if (!(far(b, d) || far(d, c) || far(b, c) || (gone(b) && gone(d) && gone(c)))) { meshI[m++] = b; meshI[m++] = d; meshI[m++] = c; }
-      }
-    }
-    meshCount = m;
-
-    const fw = Math.max(2, Math.round(W * GDPR)), fh = Math.max(2, Math.round(bottom * GDPR));
-    if (fw !== pageW || fh !== pageH) {
-      pageW = fw; pageH = fh;
-      gl.activeTexture(gl.TEXTURE2);
-      gl.bindTexture(gl.TEXTURE_2D, pageTex);
-      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, fw, fh, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
-      gl.bindFramebuffer(gl.FRAMEBUFFER, pageFB);
-      gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, pageTex, 0);
-    }
-    gl.bindFramebuffer(gl.FRAMEBUFFER, pageFB);
-    gl.viewport(0, 0, pageW, pageH);
-    gl.clearColor(0, 0, 0, 0);
-    gl.clear(gl.COLOR_BUFFER_BIT);
-    gl.enable(gl.BLEND);
-    gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
-
-    gl.useProgram(warpProg);
-    gl.uniform2f(WU.uFB, W, bottom);
-    gl.uniform1i(WU.uContent, 3);
-    gl.uniform1f(WU.uRt, R_T);
-    gl.uniform1f(WU.uQ, q);
-    gl.bindBuffer(gl.ARRAY_BUFFER, meshBuf);
-    gl.bufferData(gl.ARRAY_BUFFER, meshV.subarray(0, nx * ny * 6), gl.DYNAMIC_DRAW);
-    for (let k = 0; k < 4; k++) gl.enableVertexAttribArray(k);
-    gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 24, 0);
-    gl.vertexAttribPointer(1, 2, gl.FLOAT, false, 24, 8);
-    gl.vertexAttribPointer(2, 1, gl.FLOAT, false, 24, 16);
-    gl.vertexAttribPointer(3, 1, gl.FLOAT, false, 24, 20);
-    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, idxBuf);
-    gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, meshI.subarray(0, m), gl.DYNAMIC_DRAW);
-    gl.drawElements(gl.TRIANGLES, m, gl.UNSIGNED_SHORT, 0);
-    for (let k = 1; k < 4; k++) gl.disableVertexAttribArray(k);
-
-    // the debris
-    if (debrisProg && q > 0.001) {
-      const sp = mobile ? 2.5 : 3;              // one particle per sp × sp px of page
-      const cx = Math.ceil(W / sp), cy = Math.ceil(sh / sp), key = `${cx}x${cy}`;
-      if (key !== cellKey) {
-        cellKey = key; cellCount = cx * cy;
-        const cells = new Float32Array(cellCount * 2);
-        for (let j = 0, k = 0; j < cy; j++) {
-          for (let i = 0; i < cx; i++) { cells[k++] = Math.min(1, ((i + 0.5) * sp) / W); cells[k++] = Math.min(1, ((j + 0.5) * sp) / sh); }
-        }
-        gl.bindBuffer(gl.ARRAY_BUFFER, cellBuf);
-        gl.bufferData(gl.ARRAY_BUFFER, cells, gl.STATIC_DRAW);
-      }
-      gl.useProgram(debrisProg);
-      gl.activeTexture(gl.TEXTURE4);
-      gl.bindTexture(gl.TEXTURE_2D, geoTex);
-      gl.uniform1i(DU.uGeo, 4); gl.uniform1i(DU.uContent, 3);
-      gl.uniform2f(DU.uFB, W, bottom);
-      gl.uniform2f(DU.uSrcO, 0, top);
-      gl.uniform2f(DU.uSrcS, W, sh);
-      gl.uniform2f(DU.uC, hole.cx, hole.cy);
-      gl.uniform1f(DU.uRs, rs);
-      gl.uniform1f(DU.uS, band.s);
-      gl.uniform1f(DU.uQ, q);
-      gl.uniform1f(DU.uRt, R_T);
-      gl.uniform1f(DU.uPt, sp * GDPR * 1.15);
-      gl.uniform1f(DU.uLagMax, LAG_MAX);
-      gl.bindBuffer(gl.ARRAY_BUFFER, cellBuf);
-      gl.enableVertexAttribArray(0);
-      gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
-      instancing.vertexAttribDivisorANGLE(0, 1);
-      gl.enableVertexAttribArray(1);
-      // trails: emitted light, so they add
-      gl.bindBuffer(gl.ARRAY_BUFFER, lagBuf);
-      gl.vertexAttribPointer(1, 1, gl.FLOAT, false, 0, 0);
-      gl.blendFunc(gl.ONE, gl.ONE);
-      gl.uniform1f(DU.uDot, 0);
-      instancing.drawArraysInstancedANGLE(gl.LINES, 0, LAGS.length, cellCount);
-      // the particles themselves
-      gl.bindBuffer(gl.ARRAY_BUFFER, dotBuf);
-      gl.vertexAttribPointer(1, 1, gl.FLOAT, false, 0, 0);
-      gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
-      gl.uniform1f(DU.uDot, 1);
-      instancing.drawArraysInstancedANGLE(gl.POINTS, 0, 1, cellCount);
-      instancing.vertexAttribDivisorANGLE(0, 0);
-      gl.disableVertexAttribArray(1);
-    }
-    gl.disable(gl.BLEND);
-    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-  }
-
-  // the strip at the top of the screen where the page is in the hole's grip
-  function bandAt(hole, scroll) {
-    return {
-      bottom: hole.cy + Y_IN * (hole.rad / B_CRIT),
-      srcTop: -Math.round(H * 0.35),
-      // gravity is switched on over the first few hundred pixels after the hole settles
-      s: smooth(hole.travel, hole.travel + 280, scroll),
-    };
-  }
 
   // the dark wash behind the hero copy, drawn into the sky so the lens sees it too
   function drawVignette(g, heroBottom) {
@@ -1383,8 +799,9 @@ void main() {
     g.restore();
   }
 
+
   /* ---------------- Frame ---------------- */
-  let last = 0, pageKey = '';
+  let last = 0, lensClear = false;
   function render(now) {
     if (W < 2 || H < 2) return;
     const t = now / 1000;
@@ -1393,32 +810,39 @@ void main() {
     if (!reduceMotion) flow += dt * 0.5;
 
     const scroll = Math.max(0, window.scrollY);
+    const heroBottom = hero.clientHeight - scroll;
     const hole = holeAt(scroll);
-    const heroH = hero.clientHeight;
-    const sheetA = 1 - smooth(0, Math.max(1, heroH * 0.75), scroll);
 
-    // back: sky + sheet
+    // the sky: stars and the galaxy stay put; the sheet and its glow go with the hero
     bctx.setTransform(1, 0, 0, 1, 0, 0);
     bctx.clearRect(0, 0, back.width, back.height);
     bctx.setTransform(DPR, 0, 0, DPR, 0, 0);
     bctx.fillStyle = '#020308';
     bctx.fillRect(0, 0, W, H);
-    const neb = bctx.createRadialGradient(hole.cx, hole.cy, hole.rad, hole.cx, hole.cy, Math.max(W, H) * 0.6);
-    neb.addColorStop(0, `rgba(60,100,180,${(0.16 + 0.06 * sheetA).toFixed(3)})`);
-    neb.addColorStop(0.3, 'rgba(30,60,130,.06)');
-    neb.addColorStop(1, 'rgba(10,20,50,0)');
-    bctx.fillStyle = neb; bctx.fillRect(0, 0, W, H);
+    if (heroBottom > 0) {
+      const neb = bctx.createRadialGradient(hole.cx, hole.cy, hole.rad, hole.cx, hole.cy, Math.max(W, H) * 0.6);
+      neb.addColorStop(0, 'rgba(60,100,180,.22)');
+      neb.addColorStop(0.3, 'rgba(30,60,130,.06)');
+      neb.addColorStop(1, 'rgba(10,20,50,0)');
+      bctx.fillStyle = neb; bctx.fillRect(0, 0, W, heroBottom);
+    }
     drawStars(bctx, t, hole);
 
-    if (sheetA > 0.01) {
+    if (heroBottom > 0) {
       lctx.setTransform(1, 0, 0, 1, 0, 0);
       lctx.clearRect(0, 0, layer.width, layer.height);
       lctx.setTransform(DPR, 0, 0, DPR, 0, 0);
       drawStreaks(lctx, hole.ox, hole.oy);
       drawTokens(lctx, hole.ox, hole.oy);
+      // the sheet ends with the hero: fade it out over its last stretch
+      const fade = lctx.createLinearGradient(0, heroBottom - 160, 0, heroBottom);
+      fade.addColorStop(0, 'rgba(0,0,0,0)'); fade.addColorStop(1, 'rgba(0,0,0,1)');
+      lctx.globalCompositeOperation = 'destination-out';
+      lctx.fillStyle = fade; lctx.fillRect(0, heroBottom - 160, W, 160);
+      lctx.fillStyle = '#000'; lctx.fillRect(0, heroBottom, W, Math.max(0, H - heroBottom));
+      lctx.globalCompositeOperation = 'source-over';
 
       bctx.setTransform(1, 0, 0, 1, 0, 0);
-      bctx.globalAlpha = sheetA;
       bctx.drawImage(layer, 0, 0);
       // cheap bloom: downsample twice and add back
       bactx.clearRect(0, 0, bloomA.width, bloomA.height);
@@ -1426,32 +850,20 @@ void main() {
       bbctx.clearRect(0, 0, bloomB.width, bloomB.height);
       bbctx.drawImage(bloomA, 0, 0, bloomB.width, bloomB.height);
       bctx.globalCompositeOperation = 'lighter';
-      bctx.globalAlpha = 0.55 * sheetA; bctx.drawImage(bloomA, 0, 0, back.width, back.height);
-      bctx.globalAlpha = 0.8 * sheetA; bctx.drawImage(bloomB, 0, 0, back.width, back.height);
+      bctx.globalAlpha = 0.55; bctx.drawImage(bloomA, 0, 0, back.width, back.height);
+      bctx.globalAlpha = 0.8; bctx.drawImage(bloomB, 0, 0, back.width, back.height);
       bctx.globalAlpha = 1;
       bctx.globalCompositeOperation = 'source-over';
       bctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+      drawVignette(bctx, heroBottom);
     }
-    drawVignette(bctx, heroH - scroll);
 
-    fctx.setTransform(1, 0, 0, 1, 0, 0);
-    fctx.clearRect(0, 0, front.width, front.height);
     if (gl) {
-      // once the hole has settled, it and the page in its grip are drawn in front
-      const band = hole.pinned && !reduceMotion ? bandAt(hole, scroll) : null;
-      lensCanvas.classList.toggle('front', !!band);
-      if (band) {
-        const key = `${scroll}|${W}|${H}|${measureGen}`;
-        if (key !== pageKey) { drawPage(hole, band); pageKey = key; }
-      } else {
-        pageKey = '';
-      }
-      drawLens(hole, t, band);
-    } else {
-      fctx.setTransform(DPR, 0, 0, DPR, 0, 0);
-      drawHorizon(fctx, hole, t);
+      if (hole.cy + hole.R > 0) { drawLens(hole, t); lensClear = false; }
+      else if (!lensClear) { clearLens(); lensClear = true; }
+    } else if (hole.cy + hole.R > 0) {
+      drawHorizon(bctx, hole, t);
     }
-    nav.classList.toggle('past', scroll > heroH * 0.7);
   }
 
   /* ---------------- Main loop ---------------- */
@@ -1464,10 +876,8 @@ void main() {
     if (running) return;
     buildFlow();
     initGL();
-    if (gl && !reduceMotion) { buildGeodesics(); uploadGeodesics(); prepareReplica(); }
     resize();
     lastW = W; lastH = H;
-    measure();
     running = true;
     flow = 30;                                   // start mid-stream
     render(performance.now());
@@ -1485,92 +895,14 @@ void main() {
     if (w === lastW && h === lastH) return;
     lastW = w; lastH = h;
     resize();
-    measure();
     render(performance.now());
   });
-  // late layout shifts: a web font swapping in re-wraps text without
-  // necessarily changing any size, so listen for fonts as well
-  if (document.fonts) {
-    document.fonts.addEventListener('loadingdone', () => { if (running) measure(); });
-    document.fonts.ready.then(() => { if (running) measure(); });
-  }
-  if ('ResizeObserver' in window) {
-    let pending = false;
-    new ResizeObserver(() => {
-      if (!running || pending) return;
-      pending = true;
-      requestAnimationFrame(() => { pending = false; measure(); });
-    }).observe(document.querySelector('main'));
-  }
 
   const fontsReady = document.fonts
     ? Promise.all([
         document.fonts.load(`${FS}px "STIX Two Text"`),
         document.fonts.load(`italic ${FS}px "STIX Two Text"`),
-        document.fonts.ready,
       ])
     : Promise.resolve();
   Promise.race([fontsReady, new Promise((r) => setTimeout(r, 2500))]).then(start, start);
-})();
-
-/* ---------------- Publication cover art ---------------- */
-(() => {
-  const NS = 'http://www.w3.org/2000/svg';
-  const rng = (seed) => () => ((seed = (seed * 1664525 + 1013904223) >>> 0) / 4294967296);
-  const path = (svg, d, attrs) => {
-    const p = document.createElementNS(NS, 'path');
-    p.setAttribute('d', d);
-    for (const k in attrs) p.setAttribute(k, attrs[k]);
-    svg.appendChild(p);
-  };
-
-  // FunDiff: samples from a smooth prior over functions
-  const fd = document.querySelector('.art-fundiff');
-  if (fd) {
-    const r = rng(3);
-    for (let n = 0; n < 22; n++) {
-      const coef = Array.from({ length: 7 }, (_, k) => ({ a: ((r() - 0.5) * 2) / Math.pow(k + 1, 1.4), p: r() * 6.28 }));
-      let d = '';
-      for (let i = 0; i <= 120; i++) {
-        const x = i / 120;
-        let y = 0;
-        coef.forEach((c, k) => { y += c.a * Math.sin((k + 1) * Math.PI * x + c.p); });
-        d += (i ? 'L' : 'M') + (20 + x * 280).toFixed(1) + ' ' + (90 - y * 34).toFixed(1);
-      }
-      const hi = n === 0;
-      path(fd, d, { fill: 'none', stroke: hi ? '#ffffff' : '#9cc8ff', 'stroke-width': hi ? 1.4 : 0.7, opacity: hi ? 0.95 : 0.18 + r() * 0.25 });
-    }
-  }
-
-  // PiRD: streamlines of flow past a cylinder, with a wake
-  const pr = document.querySelector('.art-pird');
-  if (pr) {
-    const R = 16, cx = 110, cy = 90;
-    const vel = (x, y) => {
-      const X = x - cx, Y = y - cy, r2 = X * X + Y * Y;
-      let u = 1 - (R * R * (X * X - Y * Y)) / (r2 * r2);
-      let v = -(2 * R * R * X * Y) / (r2 * r2);
-      for (const [vx, vy, g] of [[cx + 52, cy - 12, 1], [cx + 104, cy + 13, -1], [cx + 156, cy - 13, 1]]) {
-        const dx = x - vx, dy = y - vy, d2 = dx * dx + dy * dy + 40;
-        u += (g * 180 * dy) / d2 / 6.28; v -= (g * 180 * dx) / d2 / 6.28;
-      }
-      return [u, v];
-    };
-    for (let y0 = 14; y0 <= 166; y0 += 7) {
-      let x = 6, y = y0, d = `M${x} ${y}`;
-      for (let i = 0; i < 700 && x < 314; i++) {
-        const [u, v] = vel(x, y);
-        const s = Math.hypot(u, v) || 1;
-        x += (u / s) * 0.8; y += (v / s) * 0.8;
-        if ((x - cx) ** 2 + (y - cy) ** 2 < R * R) break;
-        if (i % 3 === 0) d += `L${x.toFixed(1)} ${y.toFixed(1)}`;
-      }
-      const near = Math.abs(y0 - cy) < 26;
-      path(pr, d, { fill: 'none', stroke: near ? '#d8ebff' : '#9cc8ff', 'stroke-width': near ? 0.9 : 0.6, opacity: near ? 0.8 : 0.35 });
-    }
-    const c = document.createElementNS(NS, 'circle');
-    c.setAttribute('cx', cx); c.setAttribute('cy', cy); c.setAttribute('r', R - 1);
-    c.setAttribute('fill', '#000'); c.setAttribute('stroke', '#d8ebff'); c.setAttribute('stroke-width', '1');
-    pr.appendChild(c);
-  }
 })();

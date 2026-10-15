@@ -10,10 +10,8 @@ Live site: <https://simingshan.github.io>
 ```
 index.html              Homepage — about, publications, blog index
 home.css                Homepage styles (deep-space theme)
-home.js                 The hero (a sheet of equations falling into a
-                        ray-traced black hole) and the scroll effect: the page
-                        follows Schwarzschild geodesics into the hole, is
-                        tidally disrupted into debris, and fades at the horizon
+home.js                 The hero: a sheet of equations falling into a
+                        ray-traced black hole, over a fixed starfield
 styles.css              Base styles for blog posts
 blog/
   red-diffeq.html       Paper explainer: RED-DiffEq
